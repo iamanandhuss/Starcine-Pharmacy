@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Debug / temp scripts
+debug_*.js
+debug_*.cjs
+check_*.cjs
+DIAGNOSE_*.sql
+
+# SQL migration files (may contain sensitive seeds)
+*.sql
+!src/**/*.sql
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Agent files
+.agents/
