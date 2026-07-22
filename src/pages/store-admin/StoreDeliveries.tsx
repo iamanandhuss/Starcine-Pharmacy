@@ -75,8 +75,8 @@ export const StoreDeliveries: React.FC = () => {
     localStorage.setItem('starcine_delivery_rate_per_km', String(newRate));
   };
 
-  // Settlement Tracking state
   const [settledDrivers, setSettledDrivers] = useState<Record<string, boolean>>({});
+  const [serverPayoutsSummary, setServerPayoutsSummary] = useState<any[]>([]);
 
   // Modals
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
