@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   Store, Users, ShieldCheck, CalendarCheck, Truck,
-  ClipboardList, TrendingUp, Activity,
-  CheckCircle2, AlertCircle, BarChart2, RefreshCw,
+  ClipboardList, Activity,
+  CheckCircle2, AlertCircle, BarChart2, RefreshCw, IndianRupee,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -10,6 +10,7 @@ import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
+import { Toast } from '../../components/ui/Toast';
 
 interface StoreStats {
   id: string;
@@ -31,6 +32,7 @@ interface OverallStats {
   pendingDeliveries: number;
   completedDeliveries: number;
   totalTasks: number;
+  totalRevenue: number;
 }
 
 interface ActivityLog {
@@ -43,7 +45,7 @@ interface ActivityLog {
 }
 
 export const SuperAdminDashboard: React.FC = () => {
-  const { user, role, isSuperAdmin, isStoreAdmin, profile } = useAuth();
+  const { profile } = useAuth();
   const { allStores } = useStore();
   const navigate = useNavigate();
 
@@ -57,10 +59,58 @@ export const SuperAdminDashboard: React.FC = () => {
     pendingDeliveries: 0,
     completedDeliveries: 0,
     totalTasks: 0,
+    totalRevenue: 0,
   });
   const [storeStats, setStoreStats] = useState<StoreStats[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingEmployees, setPendingEmployees] = useState<any[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
+
+  const handleApprove = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          approval_status: 'approved',
+          approved_by: profile?.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      if (error) throw error;
+      showToast('Employee approved successfully!');
+      fetchStats();
+    } catch (err: any) {
+      showToast(`Approval failed: ${err.message}`, 'error');
+    }
+  };
+
+  const handleReject = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to reject this employee request?')) return;
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          approval_status: 'rejected',
+          approved_by: profile?.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      if (error) throw error;
+      showToast('Employee request rejected.');
+      fetchStats();
+    } catch (err: any) {
+      showToast(`Rejection failed: ${err.message}`, 'error');
+    }
+  };
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -75,6 +125,7 @@ export const SuperAdminDashboard: React.FC = () => {
         { count: completedDeliveries },
         { count: totalTasks },
         { data: activityData },
+        { data: pendingData },
       ] = await Promise.all([
         supabase.from('users').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('attendance').select('id', { count: 'exact', head: true }).eq('attendance_date', today),
@@ -83,6 +134,7 @@ export const SuperAdminDashboard: React.FC = () => {
         supabase.from('home_deliveries').select('id', { count: 'exact', head: true }).eq('status', 'Delivered'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).neq('status', 'Done'),
         supabase.from('activity_logs').select('id, action, module, description, created_at, users(full_name)').order('created_at', { ascending: false }).limit(8),
+        supabase.from('users').select('id, employee_code, full_name, email, created_at, roles(name), branches(name)').eq('approval_status', 'pending').order('created_at', { ascending: false }),
       ]);
 
       // Fetch store admin count separately (join workaround)
@@ -91,6 +143,9 @@ export const SuperAdminDashboard: React.FC = () => {
         .select('id', { count: 'exact', head: true })
         .eq('is_active', true)
         .eq('roles.name', 'Store Admin');
+
+      const { data: salesData } = await supabase.from('sales_registers').select('total_sales');
+      const totalRev = (salesData || []).reduce((acc: number, curr: any) => acc + (Number(curr.total_sales) || 0), 0);
 
       const statsObj = {
         totalStores: allStores.length,
@@ -102,10 +157,12 @@ export const SuperAdminDashboard: React.FC = () => {
         pendingDeliveries: pendingDeliveries ?? 0,
         completedDeliveries: completedDeliveries ?? 0,
         totalTasks: totalTasks ?? 0,
+        totalRevenue: totalRev,
       };
 
       setStats(statsObj);
       setRecentActivity((activityData as any as ActivityLog[]) || []);
+      setPendingEmployees((pendingData as any[]) || []);
 
       // Per-store stats
       const storeStatsList: StoreStats[] = await Promise.all(
@@ -138,55 +195,19 @@ export const SuperAdminDashboard: React.FC = () => {
   }, [allStores]);
 
   const statCards = [
-    { label: 'Total Stores', value: stats.totalStores, sub: `${stats.activeStores} active`, icon: <Store className="h-5 w-5" />, color: 'bg-brand-500/10 text-brand-500' },
-    { label: 'Total Employees', value: stats.totalEmployees, sub: 'across all stores', icon: <Users className="h-5 w-5" />, color: 'bg-purple-500/10 text-purple-500' },
-    { label: 'Store Admins', value: stats.totalStoreAdmins, sub: 'active accounts', icon: <ShieldCheck className="h-5 w-5" />, color: 'bg-blue-500/10 text-blue-500' },
-    { label: 'Today\'s Attendance', value: stats.todayAttendance, sub: 'checked in today', icon: <CalendarCheck className="h-5 w-5" />, color: 'bg-emerald-500/10 text-emerald-500' },
-    { label: 'Today\'s Deliveries', value: stats.todayDeliveries, sub: `${stats.pendingDeliveries} pending`, icon: <Truck className="h-5 w-5" />, color: 'bg-orange-500/10 text-orange-500' },
-    { label: 'Completed Deliveries', value: stats.completedDeliveries, sub: 'all time', icon: <CheckCircle2 className="h-5 w-5" />, color: 'bg-teal-500/10 text-teal-500' },
-    { label: 'Open Tasks', value: stats.totalTasks, sub: 'across all stores', icon: <ClipboardList className="h-5 w-5" />, color: 'bg-amber-500/10 text-amber-500' },
-    { label: 'Revenue', value: '—', sub: 'Coming soon', icon: <TrendingUp className="h-5 w-5" />, color: 'bg-dark-500/10 text-dark-400' },
+    { label: 'Total Stores', value: stats.totalStores, sub: `${stats.activeStores} active`, icon: <Store className="h-5 w-5" />, color: 'bg-brand-500/10 text-brand-500', route: '/super-admin/stores' },
+    { label: 'Total Employees', value: stats.totalEmployees, sub: 'across all stores', icon: <Users className="h-5 w-5" />, color: 'bg-purple-500/10 text-purple-500', route: '/super-admin/employees' },
+    { label: 'Store Admins', value: stats.totalStoreAdmins, sub: 'active accounts', icon: <ShieldCheck className="h-5 w-5" />, color: 'bg-blue-500/10 text-blue-500', route: '/super-admin/users' },
+    { label: 'Today\'s Attendance', value: stats.todayAttendance, sub: 'checked in today', icon: <CalendarCheck className="h-5 w-5" />, color: 'bg-emerald-500/10 text-emerald-500', route: '/super-admin/attendance' },
+    { label: 'Today\'s Deliveries', value: stats.todayDeliveries, sub: `${stats.pendingDeliveries} pending`, icon: <Truck className="h-5 w-5" />, color: 'bg-orange-500/10 text-orange-500', route: '/super-admin/deliveries' },
+    { label: 'Completed Deliveries', value: stats.completedDeliveries, sub: 'all time', icon: <CheckCircle2 className="h-5 w-5" />, color: 'bg-teal-500/10 text-teal-500', route: '/super-admin/deliveries' },
+    { label: 'Open Tasks', value: stats.totalTasks, sub: 'across all stores', icon: <ClipboardList className="h-5 w-5" />, color: 'bg-amber-500/10 text-amber-500', route: '/super-admin/tasks' },
+    { label: 'Revenue', value: `₹${stats.totalRevenue.toLocaleString()}`, sub: 'Registered revenue', icon: <IndianRupee className="h-5 w-5" />, color: 'bg-emerald-500/10 text-emerald-500', route: '/super-admin/sales' },
   ];
 
   return (
     <div className="space-y-8">
-      {/* Dynamic Session Role Debugger */}
-      <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-red-500 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-            Session Security & Role Debug Console
-          </span>
-          <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-400">
-            Developer Mode
-          </span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-red-500/10 text-dark-800 dark:text-dark-200">
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">Logged User</p>
-            <p className="font-mono mt-0.5">{user?.email || 'No email'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">AuthContext.role</p>
-            <p className="font-mono mt-0.5 text-blue-500 font-bold">"{role}"</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">isSuperAdmin Flag</p>
-            <p className={`font-mono mt-0.5 font-bold ${isSuperAdmin ? 'text-green-500' : 'text-red-500'}`}>
-              {isSuperAdmin ? 'TRUE (Super Admin Mode)' : 'FALSE'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">isStoreAdmin Flag</p>
-            <p className={`font-mono mt-0.5 font-bold ${isStoreAdmin ? 'text-green-500' : 'text-red-500'}`}>
-              {isStoreAdmin ? 'TRUE (Store Admin Mode)' : 'FALSE'}
-            </p>
-          </div>
-        </div>
-        <div className="text-[10px] text-dark-400 pt-1">
-          💡 <strong>Tip:</strong> If <em>isSuperAdmin</em> is <strong>FALSE</strong>, the application restricts access to Super Admin pages and redirects users to employee or store administration consoles.
-        </div>
-      </div>
+
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -213,18 +234,90 @@ export const SuperAdminDashboard: React.FC = () => {
           Refresh
         </Button>
       </div>
+ 
+      {/* Pending Approvals Section */}
+      {!loading && pendingEmployees.length > 0 && (
+        <Card className="border-amber-500/20 bg-amber-500/[0.02] relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-amber-500" />
+          <Card.Header className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Card.Title className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 uppercase tracking-wide">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  Action Required: Pending Employee Approvals ({pendingEmployees.length})
+                </Card.Title>
+                <Card.Description>Review and approve new register requests before they can sign in</Card.Description>
+              </div>
+            </div>
+          </Card.Header>
+          <Card.Content className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-dark-200 dark:border-dark-800 bg-dark-50/50 dark:bg-dark-900/50">
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase">Employee Code</th>
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase">Full Name</th>
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase">Email Address</th>
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase">Role</th>
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase">Branch</th>
+                    <th className="px-4 py-2.5 font-bold text-dark-500 uppercase text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-100 dark:divide-dark-850">
+                  {pendingEmployees.map(emp => (
+                    <tr key={emp.id} className="hover:bg-dark-50/10">
+                      <td className="px-4 py-3 font-mono font-bold text-dark-600 dark:text-dark-400">
+                        {emp.employee_code || '—'}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-dark-800 dark:text-dark-200">
+                        {emp.full_name}
+                      </td>
+                      <td className="px-4 py-3 text-dark-500">{emp.email}</td>
+                      <td className="px-4 py-3 text-dark-700 dark:text-dark-350">{emp.roles?.name || 'Staff'}</td>
+                      <td className="px-4 py-3 text-dark-750 dark:text-dark-300">{emp.branches?.name || '—'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleApprove(emp.id)}
+                            className="px-2.5 py-1 rounded bg-emerald-600 text-white font-extrabold hover:bg-emerald-700 cursor-pointer transition-colors text-[10px]"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleReject(emp.id)}
+                            className="px-2.5 py-1 rounded bg-rose-600 text-white font-extrabold hover:bg-rose-700 cursor-pointer transition-colors text-[10px]"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card.Content>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((card) => (
-          <Card key={card.label} className="hover:shadow-md transition-shadow">
+          <Card
+            key={card.label}
+            onClick={() => card.route && navigate(card.route)}
+            className="hover:shadow-lg hover:border-brand-500/40 transition-all cursor-pointer group"
+          >
             <Card.Content className="p-4">
               <div className="flex items-center justify-between mb-3">
-                <span className={`p-2 rounded-lg ${card.color}`}>
+                <span className={`p-2 rounded-lg ${card.color} group-hover:scale-110 transition-transform`}>
                   {card.icon}
                 </span>
+                <span className="text-[10px] font-bold text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  View →
+                </span>
               </div>
-              <p className="text-2xl font-extrabold text-dark-900 dark:text-white leading-none">
+              <p className="text-2xl font-extrabold text-dark-900 dark:text-white leading-none group-hover:text-brand-500 transition-colors">
                 {loading ? '—' : card.value}
               </p>
               <p className="text-[11px] font-semibold text-dark-500 dark:text-dark-400 mt-1">
@@ -373,6 +466,13 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </Card.Content>
         </Card>
+      </div>
+      
+      {/* Toasts */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map(t => (
+          <Toast key={t.id} message={t.message} type={t.type} onClose={() => setToasts(prev => prev.filter(x => x.id !== t.id))} />
+        ))}
       </div>
     </div>
   );

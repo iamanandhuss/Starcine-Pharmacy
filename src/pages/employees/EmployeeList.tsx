@@ -46,6 +46,7 @@ export interface Employee {
   employee_code: string;
   store_name?: string;
   store_id?: string;
+  approval_status?: string;
 }
 
 // Zod Schema for creating/inviting a new employee with all database fields
@@ -82,13 +83,16 @@ type EmployeeFormValues = z.infer<typeof employeeSchema>;
 
 export const EmployeeList: React.FC = () => {
   const navigate = useNavigate();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isStoreAdmin, profile } = useAuth();
   const { selectedStoreId } = useStore();
 
   // Database employee data
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
+
+  // Active tab: 'active' | 'pending' | 'all'
+  const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'all'>('active');
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,6 +108,61 @@ export const EmployeeList: React.FC = () => {
   // Toasts state
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'info' }[]>([]);
 
+  const handleApprove = async (emp: Employee) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          approval_status: 'approved',
+          approved_by: profile?.id || null,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', emp.id);
+
+      if (error) throw error;
+
+      setEmployees((prev) =>
+        prev.map((e) =>
+          e.id === emp.id
+            ? { ...e, approval_status: 'approved' }
+            : e
+        )
+      );
+      showToast(`Employee "${emp.name}" approved successfully!`, 'success');
+    } catch (err: any) {
+      console.error('Approval failed:', err);
+      showToast(`Error: ${err.message}`, 'info');
+    }
+  };
+
+  const handleReject = async (emp: Employee) => {
+    const confirmed = window.confirm(`Are you sure you want to reject "${emp.name}"?`);
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          approval_status: 'rejected'
+        })
+        .eq('id', emp.id);
+
+      if (error) throw error;
+
+      setEmployees((prev) =>
+        prev.map((e) =>
+          e.id === emp.id
+            ? { ...e, approval_status: 'rejected' }
+            : e
+        )
+      );
+      showToast(`Employee "${emp.name}" rejected.`, 'info');
+    } catch (err: any) {
+      console.error('Rejection failed:', err);
+      showToast(`Error: ${err.message}`, 'info');
+    }
+  };
+
   const showToast = (message: string, type: 'success' | 'info' = 'success') => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -117,17 +176,13 @@ export const EmployeeList: React.FC = () => {
     try {
       let query = supabase
         .from('users')
-        .select('id, employee_code, first_name, last_name, full_name, email, phone, is_active, created_at, roles(name), branches!users_branch_id_fkey(id, name)')
+        .select('id, employee_code, first_name, last_name, full_name, email, phone, is_active, created_at, approval_status, roles(name), branches!users_branch_id_fkey(id, name)')
         .order('full_name', { ascending: true });
 
-      // Super Admin: filter by selected store if one is chosen
-      if (isSuperAdmin && selectedStoreId) {
+      // Super Admin fetches all users to allow checking pending approvals globally.
+      // Store Admin / Employee are restricted to their branch.
+      if (!isSuperAdmin && selectedStoreId) {
         query = query.eq('branch_id', selectedStoreId);
-      } else if (!isSuperAdmin) {
-        // Store Admin / Employee: always scope to their store
-        if (selectedStoreId) {
-          query = query.eq('branch_id', selectedStoreId);
-        }
       }
 
       const { data, error } = await query;
@@ -143,6 +198,7 @@ export const EmployeeList: React.FC = () => {
         employee_code: u.employee_code || '—',
         store_name: u.branches?.name || '—',
         store_id: u.branches?.id || null,
+        approval_status: u.approval_status || 'approved',
       }));
       setEmployees(mapped);
     } catch (err: any) {
@@ -263,6 +319,16 @@ export const EmployeeList: React.FC = () => {
 
   // Filter Roster
   const filteredEmployees = employees.filter((emp) => {
+    // Filter by tab
+    if (activeTab === 'active' && emp.approval_status !== 'approved') return false;
+    if (activeTab === 'pending' && emp.approval_status !== 'pending') return false;
+    // (if 'all', we show everything)
+
+    // Store filter (client-side for Active and All tabs only)
+    if (activeTab !== 'pending' && selectedStoreId && emp.store_id !== selectedStoreId) {
+      return false;
+    }
+
     const matchesSearch =
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -326,43 +392,8 @@ export const EmployeeList: React.FC = () => {
         }
       }
 
-      // 4. Try to create the user directly via database RPC first (bypassing SMTP to avoid rate limits)
-      console.log('Attempting direct creation via RPC...');
-      const { error: rpcError } = await supabase.rpc('create_new_employee_rpc', {
-        p_email: values.email.trim(),
-        p_password: values.password,
-        p_first_name: values.first_name.trim(),
-        p_last_name: values.last_name.trim(),
-        p_role_id: values.role_id,
-        p_department_id: values.department_id || null,
-        p_branch_id: values.branch_id,
-        p_employee_code: code,
-        p_phone: values.phone?.trim() || null,
-        p_gender: values.gender || null,
-        p_date_of_birth: values.date_of_birth || null,
-        p_joining_date: values.joining_date || null,
-        p_address: values.address?.trim() || null,
-        p_emergency_contact_name: values.emergency_contact_name?.trim() || null,
-        p_emergency_contact_phone: values.emergency_contact_phone?.trim() || null
-      });
-
-      if (!rpcError) {
-        showToast(`Employee "${values.first_name} ${values.last_name}" created successfully!`, 'success');
-        resetAdd();
-        setIsAddModalOpen(false);
-        await fetchEmployees();
-        return;
-      }
-
-      console.warn('RPC direct creation failed. Falling back to standard signUp:', rpcError.message);
-      
-      // If the error was a validation error from inside the function, raise it directly
-      if (rpcError.message && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
-        throw new Error(rpcError.message);
-      }
-
-      // 5. Fallback: Create user in Supabase Authentication using the non-persisting client
-      console.log('Registering user in Supabase Auth:', values.email.trim());
+      // 4. Create user in Supabase Authentication using the non-persisting client
+      console.log('Registering employee in Supabase Auth:', values.email.trim());
       const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: values.email.trim(),
         password: values.password,
@@ -393,6 +424,7 @@ export const EmployeeList: React.FC = () => {
       console.log('Auth user created successfully with ID:', newAuthId);
 
       // 6. Insert record into public.users
+      const initialApprovalStatus = isSuperAdmin ? 'approved' : 'pending';
       const payload = {
         auth_user_id: newAuthId,
         employee_code: code,
@@ -412,6 +444,7 @@ export const EmployeeList: React.FC = () => {
         emergency_contact_name: values.emergency_contact_name?.trim() || null,
         emergency_contact_phone: values.emergency_contact_phone?.trim() || null,
         is_active: true,
+        approval_status: initialApprovalStatus,
       };
 
       console.log('Inserting profile payload into public.users:', payload);
@@ -427,7 +460,10 @@ export const EmployeeList: React.FC = () => {
         );
       }
 
-      showToast(`Employee "${payload.full_name}" created successfully!`, 'success');
+      const successMsg = isSuperAdmin
+        ? `Employee "${payload.full_name}" created successfully!`
+        : `Employee "${payload.full_name}" created and pending approval by a Super Admin.`;
+      showToast(successMsg, 'success');
       resetAdd();
       setIsAddModalOpen(false);
       await fetchEmployees();
@@ -605,6 +641,49 @@ export const EmployeeList: React.FC = () => {
         </Card.Content>
       </Card>
 
+      {/* Tab bar */}
+      <div className="flex border-b border-dark-200 dark:border-dark-800 gap-6 text-xs font-bold text-dark-500 dark:text-dark-400 px-1">
+        <button
+          onClick={() => setActiveTab('active')}
+          className={`pb-3 relative transition-colors cursor-pointer ${
+            activeTab === 'active'
+              ? 'text-brand-600 dark:text-brand-400 border-b-2 border-brand-600 dark:border-brand-400'
+              : 'hover:text-dark-700 dark:hover:text-dark-300'
+          }`}
+        >
+          Active Staff ({employees.filter((e) => e.approval_status === 'approved').length})
+        </button>
+
+        {(isSuperAdmin || isStoreAdmin) && (
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`pb-3 relative transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'pending'
+                ? 'text-brand-600 dark:text-brand-400 border-b-2 border-brand-600 dark:border-brand-400'
+                : 'hover:text-dark-700 dark:hover:text-dark-300'
+            }`}
+          >
+            Pending Approval
+            {employees.filter((e) => e.approval_status === 'pending').length > 0 && (
+              <span className="bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-extrabold animate-pulse">
+                {employees.filter((e) => e.approval_status === 'pending').length}
+              </span>
+            )}
+          </button>
+        )}
+
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`pb-3 relative transition-colors cursor-pointer ${
+            activeTab === 'all'
+              ? 'text-brand-600 dark:text-brand-400 border-b-2 border-brand-600 dark:border-brand-400'
+              : 'hover:text-dark-700 dark:hover:text-dark-300'
+          }`}
+        >
+          All Staff ({employees.length})
+        </button>
+      </div>
+
       {/* Roster Table Card */}
       <Card>
         <Card.Content className="p-0 overflow-x-auto">
@@ -613,6 +692,7 @@ export const EmployeeList: React.FC = () => {
               <tr className="bg-dark-50/50 dark:bg-dark-900/50 border-b border-dark-100 dark:border-dark-800 text-[10px] font-bold text-dark-500 dark:text-dark-400 uppercase tracking-wider">
                 <th className="py-3 px-6">Staff Member</th>
                 <th className="py-3 px-4">Role</th>
+                {activeTab === 'all' && <th className="py-3 px-4">Approval Status</th>}
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Store Branch</th>
                 <th className="py-3 px-6 text-right">Actions</th>
@@ -621,7 +701,7 @@ export const EmployeeList: React.FC = () => {
             <tbody className="divide-y divide-dark-100 dark:divide-dark-800 text-xs">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-dark-400">
+                  <td colSpan={activeTab === 'all' ? 6 : 5} className="py-8 text-center text-dark-400">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-500 border-t-transparent" />
                       Loading staff roster from database...
@@ -630,7 +710,7 @@ export const EmployeeList: React.FC = () => {
                 </tr>
               ) : filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-dark-400">
+                  <td colSpan={activeTab === 'all' ? 6 : 5} className="py-8 text-center text-dark-400">
                     No employees matching the search filters were found.
                   </td>
                 </tr>
@@ -638,12 +718,15 @@ export const EmployeeList: React.FC = () => {
                 filteredEmployees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-dark-50/20 dark:hover:bg-dark-900/20 transition-colors">
                     {/* User profile details */}
-                    <td className="py-4 px-6 flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-brand-500 to-purple-600 flex items-center justify-center text-white text-xs font-extrabold">
+                    <td
+                      className="py-4 px-6 flex items-center gap-3 cursor-pointer group"
+                      onClick={() => navigate(`/employees/${emp.id}`)}
+                    >
+                      <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-brand-500 to-purple-600 flex items-center justify-center text-white text-xs font-extrabold group-hover:scale-105 transition-transform shadow-sm">
                         {emp.name.slice(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-bold text-dark-900 dark:text-white truncate">{emp.name}</p>
+                        <p className="font-bold text-dark-900 dark:text-white truncate group-hover:text-brand-500 transition-colors">{emp.name}</p>
                         <p className="text-[10px] text-dark-400 dark:text-dark-500 truncate">{emp.email}</p>
                       </div>
                     </td>
@@ -654,6 +737,27 @@ export const EmployeeList: React.FC = () => {
                         {emp.role}
                       </span>
                     </td>
+
+                     {/* Approval Status (only on All Staff tab) */}
+                    {activeTab === 'all' && (
+                      <td className="py-4 px-4">
+                        {emp.approval_status === 'approved' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            Approved
+                          </span>
+                        )}
+                        {emp.approval_status === 'pending' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                            Pending Approval
+                          </span>
+                        )}
+                        {emp.approval_status === 'rejected' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400">
+                            Rejected
+                          </span>
+                        )}
+                      </td>
+                    )}
 
                     {/* Status badge */}
                     <td className="py-4 px-4">
@@ -674,27 +778,50 @@ export const EmployeeList: React.FC = () => {
 
                     {/* Actions */}
                     <td className="py-4 px-6 text-right space-x-1 shrink-0 whitespace-nowrap">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/employees/${emp.id}`)}
-                        leftIcon={<Eye className="h-3.5 w-3.5" />}
-                        className="p-1 rounded text-dark-500 hover:bg-dark-50"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEditClick(emp)}
-                        leftIcon={<Edit2 className="h-3.5 w-3.5" />}
-                        className="p-1 rounded text-dark-500 hover:bg-dark-50"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteClick(emp)}
-                        leftIcon={<Trash2 className="h-3.5 w-3.5" />}
-                        className="p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
-                      />
+                      {emp.approval_status === 'pending' ? (
+                        <div className="inline-flex gap-1.5">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500 text-xs px-2.5 py-1"
+                            onClick={() => handleApprove(emp)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            className="text-xs px-2.5 py-1"
+                            onClick={() => handleReject(emp)}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/employees/${emp.id}`)}
+                            leftIcon={<Eye className="h-3.5 w-3.5" />}
+                            className="p-1 rounded text-dark-500 hover:bg-dark-50"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditClick(emp)}
+                            leftIcon={<Edit2 className="h-3.5 w-3.5" />}
+                            className="p-1 rounded text-dark-500 hover:bg-dark-50"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(emp)}
+                            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                            className="p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+                          />
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))

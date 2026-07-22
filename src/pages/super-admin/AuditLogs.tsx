@@ -36,17 +36,7 @@ export const AuditLogs: React.FC = () => {
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        // Fallback seed data
-        setLogs([
-          { id: '1', user_id: null, action: 'Login Successful', details: 'User anandhustech1998@gmail.com authenticated from IP 192.168.1.100', branch_id: null, created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(), users: { full_name: 'Super Admin', email: 'anandhustech1998@gmail.com' }, branches: null },
-          { id: '2', user_id: null, action: 'Layout Published', details: 'Blueprint "Standard Model 2026" version v1.2.0 deployed to all active stores', branch_id: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), users: { full_name: 'Super Admin', email: 'anandhustech1998@gmail.com' }, branches: null },
-          { id: '3', user_id: null, action: 'Status Update', details: 'Grooming wipe check approved for Narcotic Refrigerator', branch_id: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), users: { full_name: 'Store Admin Alex', email: 'alex@pharmacy.com' }, branches: { name: 'Main Street Pharmacy' } },
-          { id: '4', user_id: null, action: 'Branch Configured', details: 'Westside Branch manager altered to Dr. John Doe', branch_id: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), users: { full_name: 'Super Admin', email: 'anandhustech1998@gmail.com' }, branches: { name: 'Westside Branch' } },
-        ]);
-      } else {
-        setLogs(data);
-      }
+      setLogs(data || []);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {

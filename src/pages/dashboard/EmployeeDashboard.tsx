@@ -44,7 +44,7 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 export const EmployeeDashboard: React.FC = () => {
-  const { user, role, isSuperAdmin, isStoreAdmin, profile } = useAuth();
+  const { profile } = useAuth();
   const isDeliveryStaff = profile?.role_name === 'Delivery Staff';
 
   const [isClockedIn, setIsClockedIn] = useState(false);
@@ -149,43 +149,7 @@ export const EmployeeDashboard: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      {/* Dynamic Session Role Debugger */}
-      <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-red-500 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-            Session Security & Role Debug Console
-          </span>
-          <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-400">
-            Developer Mode
-          </span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-red-500/10 text-dark-800 dark:text-dark-200">
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">Logged User</p>
-            <p className="font-mono mt-0.5">{user?.email || 'No email'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">AuthContext.role</p>
-            <p className="font-mono mt-0.5 text-blue-500 font-bold">"{role}"</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">isSuperAdmin Flag</p>
-            <p className={`font-mono mt-0.5 font-bold ${isSuperAdmin ? 'text-green-500' : 'text-red-500'}`}>
-              {isSuperAdmin ? 'TRUE (Super Admin Mode)' : 'FALSE'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-400 font-bold uppercase">isStoreAdmin Flag</p>
-            <p className={`font-mono mt-0.5 font-bold ${isStoreAdmin ? 'text-green-500' : 'text-red-500'}`}>
-              {isStoreAdmin ? 'TRUE (Store Admin Mode)' : 'FALSE'}
-            </p>
-          </div>
-        </div>
-        <div className="text-[10px] text-dark-400 pt-1">
-          💡 <strong>Tip:</strong> If <em>isSuperAdmin</em> is <strong>FALSE</strong>, the application restricts access to Super Admin pages and redirects users to employee or store administration consoles.
-        </div>
-      </div>
+
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

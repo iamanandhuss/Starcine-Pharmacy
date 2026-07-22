@@ -5,6 +5,7 @@ import {
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useStore } from '../../context/StoreContext';
+import { supabase } from '../../services/supabase';
 
 import {
   ResponsiveContainer,
@@ -33,16 +34,21 @@ export const StorePerformance: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Mock leaderboard comparing store health scores
-      setLeaderboard([
-        { rank: 1, name: 'Starcine Downtown Pharmacy', score: 94, sales_achievement: 110, is_current: false },
-        { rank: 2, name: selectedStoreName || 'Starcine Main Pharmacy', score: 92, sales_achievement: 104, is_current: true },
-        { rank: 3, name: 'Starcine Northside Clinic', score: 88, sales_achievement: 96, is_current: false },
-        { rank: 4, name: 'Starcine Westside Apothecary', score: 85, sales_achievement: 91, is_current: false },
-        { rank: 5, name: 'Starcine East Gate Pharmacy', score: 81, sales_achievement: 84, is_current: false },
-      ]);
+      const { data: storesData } = await supabase.from('branches').select('id, name, is_active');
+      const activeStores = storesData || [];
+
+      const rankItems: StoreRankItem[] = activeStores.map((store: any, index: number) => ({
+        rank: index + 1,
+        name: store.name,
+        score: Math.min(100, 90 + (index === 0 ? 5 : 0)),
+        sales_achievement: 100,
+        is_current: store.id === selectedStoreId
+      }));
+
+      setLeaderboard(rankItems);
     } catch (err: any) {
       console.error(err);
+      setLeaderboard([]);
     } finally {
       setLoading(false);
     }

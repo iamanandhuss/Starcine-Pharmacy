@@ -7,6 +7,7 @@ import { AppLayout } from '../layouts/AppLayout';
 
 // ── Auth Pages ──────────────────────────────────────────────────────────────
 import { Login } from '../pages/auth/Login';
+import { Register } from '../pages/auth/Register';
 import { ForgotPassword } from '../pages/auth/ForgotPassword';
 import { ResetPassword } from '../pages/auth/ResetPassword';
 import { InviteSetPassword } from '../pages/auth/InviteSetPassword';
@@ -33,6 +34,7 @@ import { TaskManager } from '../pages/tasks/TaskManager';
 import { DocumentManager } from '../pages/documents/DocumentManager';
 import { Reports } from '../pages/reports/Reports';
 import { HomeDelivery } from '../pages/delivery/HomeDelivery';
+import { EmployeeDeliveries } from '../pages/delivery/EmployeeDeliveries';
 import { Profile } from '../pages/profile/Profile';
 
 // ── Super Admin Configured Pages ───────────────────────────────────────────
@@ -90,6 +92,7 @@ export const AppRoutes: React.FC = () => {
 
       {/* ── Auth (no AppLayout) ────────────────────────────────────────── */}
       <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
+      <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
       <Route path="/forgot-password" element={<AuthLayout><ForgotPassword /></AuthLayout>} />
       <Route path="/reset-password" element={<AuthLayout><ResetPassword /></AuthLayout>} />
 
@@ -436,6 +439,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/documents" element={<Protected><DocumentManager /></Protected>} />
       <Route path="/reports" element={<Protected><AdminRoute><Reports /></AdminRoute></Protected>} />
       <Route path="/deliveries" element={<Protected><HomeDelivery /></Protected>} />
+      <Route path="/my-deliveries" element={<Protected><EmployeeDeliveries /></Protected>} />
       <Route path="/profile" element={<Protected><Profile /></Protected>} />
 
       {/* ── Legacy redirect from old admin dashboard ───────────────────── */}

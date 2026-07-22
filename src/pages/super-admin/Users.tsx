@@ -202,35 +202,8 @@ export const Users: React.FC = () => {
 
     setCreating(true);
     try {
-      // Try to create the user directly via database RPC first (bypassing SMTP to avoid rate limits)
-      console.log('Attempting direct creation via RPC...');
-      const { error: rpcError } = await supabase.rpc('create_new_employee_rpc', {
-        p_email: createEmail.trim(),
-        p_password: createPassword,
-        p_first_name: createFirstName.trim(),
-        p_last_name: createLastName.trim(),
-        p_role_id: createRoleId,
-        p_department_id: null,
-        p_branch_id: createBranchId || null,
-        p_employee_code: 'EMP-' + Math.floor(100000 + Math.random() * 900000),
-      });
-
-      if (!rpcError) {
-        showToast(`✅ User ${createEmail} created successfully!`);
-        setIsCreateModalOpen(false);
-        clearCreateForm();
-        fetchData();
-        return;
-      }
-
-      console.warn('RPC direct creation failed. Falling back to standard signUp:', rpcError.message);
-
-      // If it is a validation error from inside the function, raise it directly
-      if (rpcError.message && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
-        throw new Error(rpcError.message);
-      }
-
-      // Step 1: Create the auth user with signUp using tempSupabase
+      // Create the auth user with signUp using tempSupabase
+      console.log('Registering user in Supabase Auth:', createEmail.trim());
       const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: createEmail.trim(),
         password: createPassword,
@@ -268,6 +241,7 @@ export const Users: React.FC = () => {
           branch_id: createBranchId || null,
           is_active: true,
           employee_code: 'EMP-' + Math.floor(100000 + Math.random() * 900000),
+          approval_status: 'approved',
         }, { onConflict: 'auth_user_id' });
 
       if (profileError) {

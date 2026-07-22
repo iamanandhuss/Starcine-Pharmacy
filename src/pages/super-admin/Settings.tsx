@@ -9,8 +9,8 @@ import { useTranslation } from '../../context/LanguageContext';
 export const Settings: React.FC = () => {
   const { language, setLanguage } = useTranslation();
   const [companyName, setCompanyName] = useState('PharmacyOps Corporation');
-  const [currency, setCurrency] = useState('USD ($)');
-  const [timezone, setTimezone] = useState('America/New_York (EST)');
+  const [currency, setCurrency] = useState('INR (₹)');
+  const [timezone, setTimezone] = useState('Asia/Kolkata (IST)');
   
   // Notification switches
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -75,6 +75,7 @@ export const Settings: React.FC = () => {
                   onChange={e => setCurrency(e.target.value)}
                   className="w-full text-xs p-2.5 rounded-lg border border-dark-200 dark:border-dark-800 bg-white dark:bg-dark-950 text-dark-900 dark:text-white focus:outline-none focus:border-brand-500"
                 >
+                  <option value="INR (₹)">INR (₹)</option>
                   <option value="USD ($)">USD ($)</option>
                   <option value="EUR (€)">EUR (€)</option>
                   <option value="GBP (£)">GBP (£)</option>
@@ -87,6 +88,7 @@ export const Settings: React.FC = () => {
                   onChange={e => setTimezone(e.target.value)}
                   className="w-full text-xs p-2.5 rounded-lg border border-dark-200 dark:border-dark-800 bg-white dark:bg-dark-950 text-dark-900 dark:text-white focus:outline-none focus:border-brand-500"
                 >
+                  <option value="Asia/Kolkata (IST)">Asia/Kolkata (IST)</option>
                   <option value="America/New_York (EST)">America/New_York (EST)</option>
                   <option value="UTC (Coordinated)">UTC (Coordinated)</option>
                   <option value="Europe/London (BST)">Europe/London (BST)</option>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  FileText, ClipboardList, Clock, Truck, DollarSign,
+  FileText, ClipboardList, Clock, Truck, IndianRupee,
   Download
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -47,7 +47,7 @@ export const StoreReports: React.FC = () => {
           <div className="space-y-2">
             {[
               { id: 'attendance', label: 'Attendance Audit', icon: <Clock className="h-4 w-4" /> },
-              { id: 'sales', label: 'Sales & Invoices', icon: <DollarSign className="h-4 w-4" /> },
+              { id: 'sales', label: 'Sales & Invoices', icon: <IndianRupee className="h-4 w-4" /> },
               { id: 'employees', label: 'Staff Directory', icon: <Users className="h-4 w-4" /> },
               { id: 'grooming', label: 'Cleanliness Logs', icon: <ClipboardList className="h-4 w-4" /> },
               { id: 'issues', label: 'Incident Tracking', icon: <FileText className="h-4 w-4" /> },

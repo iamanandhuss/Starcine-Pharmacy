@@ -89,14 +89,7 @@ export const StoreAttendance: React.FC = () => {
       // Filter attendance records locally by active branch employees
       const filteredAtt = (attRes.data || []).filter(a => empIds.includes(a.user_id)) as AttendanceRecord[];
       
-      // If mock, inject some data
-      if (filteredAtt.length === 0 && empData.length > 0) {
-        setAttendance([
-          { id: '1', user_id: empData[0].id, attendance_date: today, check_in: `${today}T08:05:00Z`, check_out: null, worked_minutes: 0, late_minutes: 5, overtime_minutes: 0, users: { full_name: empData[0].full_name, email: 'pharmacist@main.com' } },
-        ]);
-      } else {
-        setAttendance(filteredAtt);
-      }
+      setAttendance(filteredAtt);
 
       setLeaves((leavesRes.data as LeaveRequest[]) || []);
     } catch (err: any) {

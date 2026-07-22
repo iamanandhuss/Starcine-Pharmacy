@@ -58,8 +58,6 @@ export const StoreIssues: React.FC = () => {
     setToasts(prev => [...prev, { id, message, type }]);
   };
 
-  const today = new Date().toISOString().split('T')[0];
-
   const fetchData = async () => {
     if (!selectedStoreId) return;
     setLoading(true);
@@ -70,43 +68,27 @@ export const StoreIssues: React.FC = () => {
 
       setEmployees(empRes.data || []);
 
-      // Mock issues list
-      setIssues([
-        {
-          id: 'i1',
-          title: 'Cold-chain refrigerator thermostat alert',
-          category: 'Refrigerator',
-          priority: 'Critical',
-          status: 'In Progress',
-          assigned_employee_name: 'Dr. Sarah Connor',
-          reporter_name: 'Staff Member',
-          description: 'Insulin fridge temp reading +8C. Needs immediate check.',
-          created_at: `${today}T08:00:00Z`
-        },
-        {
-          id: 'i2',
-          title: 'Cephalexin shelf dirty',
-          category: 'Dirty Shelf',
-          priority: 'Low',
-          status: 'Open',
-          assigned_employee_name: null,
-          reporter_name: 'Audit Agent',
-          description: 'Spilled powder residue observed on Level 3 Shelf level.',
-          created_at: `${today}T09:15:00Z`
-        },
-        {
-          id: 'i3',
-          title: 'Label printer roller jammed',
-          category: 'Printer',
-          priority: 'High',
-          status: 'Resolved',
-          assigned_employee_name: 'Dr. Alan Grant',
-          reporter_name: 'Pharmacist Admin',
-          description: 'Sticker feed jam. Cleared roller teeth.',
-          created_at: `${today}T06:30:00Z`,
-          resolution_comments: 'Roller teeth cleaned and sticky residue cleared.'
-        }
-      ]);
+      const { data: issuesData, error: issuesErr } = await supabase
+        .from('issues')
+        .select('*, users!issues_assigned_to_fkey(full_name), reporter:users!issues_reported_by_fkey(full_name)')
+        .eq('branch_id', selectedStoreId)
+        .order('created_at', { ascending: false });
+
+      if (issuesErr) throw issuesErr;
+
+      const formattedIssues = (issuesData || []).map((i: any) => ({
+        id: i.id,
+        title: i.title,
+        category: i.category,
+        priority: i.priority,
+        status: i.status,
+        assigned_employee_name: i.users?.full_name || null,
+        reporter_name: i.reporter?.full_name || 'Staff Member',
+        description: i.description,
+        created_at: i.created_at
+      }));
+
+      setIssues(formattedIssues);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {

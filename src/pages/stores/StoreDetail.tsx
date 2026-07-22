@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Store, Users, ClipboardList, Truck, ArrowLeft,
+  Store, Users, ArrowLeft,
   MapPin, Phone, User, AlertCircle,
-  RefreshCw, CheckCircle2
+  RefreshCw, CheckCircle2, Calendar, ChevronLeft, ChevronRight,
+  Clock, ArrowRight, IndianRupee, Sun, Moon, Sunrise
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { Card } from '../../components/ui/Card';
@@ -31,35 +32,51 @@ interface EmployeeRow {
   email: string;
   phone: string | null;
   role_name: string;
+  status?: string;
+  check_in?: string | null;
+  check_out?: string | null;
 }
 
-interface TaskRow {
-  id: string;
-  title: string;
-  priority: string;
-  status: string;
-  due_date: string | null;
-}
-
-interface DeliveryRow {
-  id: string;
-  customer_name: string;
-  customer_phone: string;
-  status: string;
-  payment_method: string;
+interface ShiftInfo {
+  name: string;
+  timeRange: string;
+  icon: React.ReactNode;
+  status: 'previous' | 'current' | 'upcoming';
+  assignedStaff: EmployeeRow[];
 }
 
 export const StoreDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  // Date Navigation state (defaults to Today)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
   const [store, setStore] = useState<StoreDetailInfo | null>(null);
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
-  
+  const [todaySales, setTodaySales] = useState<number>(0);
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const dateString = selectedDate.toISOString().split('T')[0];
+  const isToday = new Date().toISOString().split('T')[0] === dateString;
+
+  const handlePrevDay = () => {
+    const prev = new Date(selectedDate);
+    prev.setDate(prev.getDate() - 1);
+    setSelectedDate(prev);
+  };
+
+  const handleNextDay = () => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + 1);
+    setSelectedDate(next);
+  };
+
+  const handleTodayJump = () => {
+    setSelectedDate(new Date());
+  };
 
   const fetchStoreData = async () => {
     if (!id) return;
@@ -76,22 +93,20 @@ export const StoreDetail: React.FC = () => {
       if (storeError) throw storeError;
       setStore(storeData);
 
-      // 2. Fetch Employees, Tasks, Deliveries concurrently
+      // 2. Fetch Employees, Attendance, Sales for selected date
       const [
         { data: employeesData, error: empError },
-        { data: tasksData, error: taskError },
-        { data: deliveriesData, error: delError }
+        { data: attData },
+        { data: salesData }
       ] = await Promise.all([
         supabase.from('users').select('id, full_name, first_name, last_name, email, phone, roles(name)').eq('branch_id', id).eq('is_active', true),
-        supabase.from('tasks').select('id, title, priority, status, due_date').eq('branch_id', id),
-        supabase.from('home_deliveries').select('id, customer_name, customer_phone, status, payment_method').eq('branch_id', id)
+        supabase.from('attendance').select('*').eq('attendance_date', dateString),
+        supabase.from('sales_registers').select('total_sales').eq('branch_id', id).eq('sales_date', dateString).maybeSingle()
       ]);
 
       if (empError) throw empError;
-      if (taskError) throw taskError;
-      if (delError) throw delError;
 
-      setEmployees((employeesData || []).map((u: any) => ({
+      const rawEmployees: EmployeeRow[] = (employeesData || []).map((u: any) => ({
         id: u.id,
         full_name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim(),
         first_name: u.first_name || '',
@@ -99,10 +114,26 @@ export const StoreDetail: React.FC = () => {
         email: u.email || '',
         phone: u.phone || null,
         role_name: u.roles?.name || 'Staff'
-      })));
+      }));
 
-      setTasks(tasksData || []);
-      setDeliveries(deliveriesData || []);
+      // Map attendance to employees
+      const attMap = new Map();
+      (attData || []).forEach((att: any) => {
+        attMap.set(att.user_id, att);
+      });
+
+      const empWithAttendance = rawEmployees.map(emp => {
+        const att = attMap.get(emp.id);
+        return {
+          ...emp,
+          status: att ? (att.late_minutes > 0 ? 'Late' : 'Present') : 'Off Duty',
+          check_in: att?.check_in || null,
+          check_out: att?.check_out || null
+        };
+      });
+
+      setEmployees(empWithAttendance);
+      setTodaySales(Number(salesData?.total_sales) || 0);
 
     } catch (err: any) {
       console.error('Error fetching store detail:', err.message);
@@ -114,13 +145,44 @@ export const StoreDetail: React.FC = () => {
 
   useEffect(() => {
     fetchStoreData();
-  }, [id]);
+  }, [id, dateString]);
+
+  // Derived Strength Metrics
+  const presentStaffCount = employees.filter(e => e.status === 'Present' || e.status === 'Late').length;
+  const lateStaffCount = employees.filter(e => e.status === 'Late').length;
+
+  // Derived Operational Shifts
+  const currentHour = new Date().getHours();
+
+  const shifts: ShiftInfo[] = [
+    {
+      name: 'Morning Shift',
+      timeRange: '07:00 AM – 03:00 PM',
+      icon: <Sunrise className="h-4 w-4 text-amber-500" />,
+      status: isToday && currentHour < 15 && currentHour >= 7 ? 'current' : isToday && currentHour >= 15 ? 'previous' : 'upcoming',
+      assignedStaff: employees.slice(0, Math.ceil(employees.length / 2))
+    },
+    {
+      name: 'Evening Shift',
+      timeRange: '03:00 PM – 11:00 PM',
+      icon: <Sun className="h-4 w-4 text-orange-500" />,
+      status: isToday && currentHour >= 15 && currentHour < 23 ? 'current' : isToday && currentHour < 15 ? 'upcoming' : 'previous',
+      assignedStaff: employees.slice(Math.ceil(employees.length / 2))
+    },
+    {
+      name: 'Night Rotation',
+      timeRange: '11:00 PM – 07:00 AM',
+      icon: <Moon className="h-4 w-4 text-indigo-400" />,
+      status: isToday && (currentHour >= 23 || currentHour < 7) ? 'current' : 'upcoming',
+      assignedStaff: employees.slice(0, 1)
+    }
+  ];
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-dark-500">
         <RefreshCw className="h-8 w-8 animate-spin text-brand-500" />
-        <p className="text-xs font-semibold">Loading store dashboard details...</p>
+        <p className="text-xs font-semibold">Loading store dashboard & shift strength details...</p>
       </div>
     );
   }
@@ -139,31 +201,199 @@ export const StoreDetail: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* Back Header */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/super-admin/stores')}
-          leftIcon={<ArrowLeft className="h-4 w-4" />}
-          className="p-2"
-        />
-        <div>
-          <h2 className="text-xl font-bold text-dark-900 dark:text-white">{store.name} Dashboard</h2>
-          <p className="text-xs text-dark-500 dark:text-dark-400">
-            Store management and branch operational insights.
-          </p>
+    <div className="space-y-6 pb-12">
+      {/* Top Header & Date Navigation Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-dark-200 dark:border-dark-800 pb-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/super-admin/stores')}
+            leftIcon={<ArrowLeft className="h-4 w-4" />}
+            className="p-2 rounded-full"
+          />
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-extrabold text-dark-900 dark:text-white">{store.name}</h1>
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
+                {store.store_code || store.code}
+              </span>
+            </div>
+            <p className="text-xs text-dark-500 dark:text-dark-400">
+              Operational Branch Control, Daily Strength & Shift Logs
+            </p>
+          </div>
+        </div>
+
+        {/* Interactive Date Navigation Bar */}
+        <div className="flex items-center gap-2 bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-750 p-1.5 rounded-xl shadow-sm">
+          <Button variant="ghost" size="sm" onClick={handlePrevDay} className="p-1.5 text-xs">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          
+          <div className="flex items-center gap-2 px-2">
+            <Calendar className="h-4 w-4 text-brand-500 shrink-0" />
+            <span className="text-xs font-bold text-dark-900 dark:text-white whitespace-nowrap">
+              {selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+            {isToday ? (
+              <span className="text-[9px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                Today
+              </span>
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleTodayJump} className="text-[10px] px-2 py-0.5">
+                Jump to Today
+              </Button>
+            )}
+          </div>
+
+          <Button variant="ghost" size="sm" onClick={handleNextDay} className="p-1.5 text-xs">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Daily Strength Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <Card.Content className="p-5 flex items-center gap-4">
+            <div className="p-3.5 bg-brand-500/10 text-brand-500 rounded-xl">
+              <Users className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wider">On-Duty Strength</p>
+              <p className="text-2xl font-black text-dark-900 dark:text-white leading-tight mt-0.5">
+                {presentStaffCount} <span className="text-xs font-semibold text-dark-500">/ {employees.length} staff</span>
+              </p>
+            </div>
+          </Card.Content>
+        </Card>
+
+        <Card>
+          <Card.Content className="p-5 flex items-center gap-4">
+            <div className="p-3.5 bg-emerald-500/10 text-emerald-500 rounded-xl">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wider">Attendance Rate</p>
+              <p className="text-2xl font-black text-dark-900 dark:text-white leading-tight mt-0.5">
+                {employees.length > 0 ? `${Math.round((presentStaffCount / employees.length) * 100)}%` : '100%'}
+              </p>
+            </div>
+          </Card.Content>
+        </Card>
+
+        <Card>
+          <Card.Content className="p-5 flex items-center gap-4">
+            <div className="p-3.5 bg-amber-500/10 text-amber-500 rounded-xl">
+              <Clock className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wider">Late Arrivals</p>
+              <p className="text-2xl font-black text-dark-900 dark:text-white leading-tight mt-0.5">
+                {lateStaffCount} <span className="text-xs font-semibold text-dark-500">late</span>
+              </p>
+            </div>
+          </Card.Content>
+        </Card>
+
+        <Card>
+          <Card.Content className="p-5 flex items-center gap-4">
+            <div className="p-3.5 bg-teal-500/10 text-teal-500 rounded-xl">
+              <IndianRupee className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wider">Daily Register Revenue</p>
+              <p className="text-2xl font-black text-dark-900 dark:text-white leading-tight mt-0.5">
+                ₹{todaySales.toLocaleString()}
+              </p>
+            </div>
+          </Card.Content>
+        </Card>
+      </div>
+
+      {/* Shifts Breakdown Section (Current, Upcoming, Previous) */}
+      <Card>
+        <Card.Header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-dark-150 dark:border-dark-800 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-brand-500" />
+              <Card.Title>Shift Rotations & Duty Schedules</Card.Title>
+            </div>
+            <Card.Description>
+              Current active duty roster, upcoming shift assignments, and previous shift records for {dateString}.
+            </Card.Description>
+          </div>
+        </Card.Header>
+
+        <Card.Content className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          {shifts.map((shift) => (
+            <div
+              key={shift.name}
+              className={`p-4 rounded-xl border transition-all ${
+                shift.status === 'current'
+                  ? 'bg-brand-500/5 border-brand-500/30 shadow-md ring-1 ring-brand-500/20'
+                  : 'bg-dark-50/50 dark:bg-dark-900/40 border-dark-150 dark:border-dark-800'
+              }`}
+            >
+              <div className="flex justify-between items-center pb-3 border-b border-dark-150 dark:border-dark-800">
+                <div className="flex items-center gap-2">
+                  {shift.icon}
+                  <h3 className="font-extrabold text-dark-900 dark:text-white text-sm">{shift.name}</h3>
+                </div>
+                <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                  shift.status === 'current'
+                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 animate-pulse'
+                    : shift.status === 'upcoming'
+                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                    : 'bg-dark-200/50 dark:bg-dark-800 text-dark-500 border-dark-300/30'
+                }`}>
+                  {shift.status === 'current' ? '⚡ Active Shift' : shift.status === 'upcoming' ? 'Upcoming' : 'Previous'}
+                </span>
+              </div>
+
+              <p className="text-[11px] font-mono text-dark-500 dark:text-dark-400 mt-2 font-semibold flex items-center gap-1">
+                <Clock className="h-3 w-3" /> {shift.timeRange}
+              </p>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wider">Roster Staff ({shift.assignedStaff.length})</p>
+                {shift.assignedStaff.length === 0 ? (
+                  <p className="text-xs text-dark-450 italic">No staff scheduled.</p>
+                ) : (
+                  shift.assignedStaff.map(emp => (
+                    <div
+                      key={emp.id}
+                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      className="p-2 rounded-lg bg-white dark:bg-dark-900 border border-dark-150 dark:border-dark-800 flex justify-between items-center text-xs hover:border-brand-500/40 transition-colors cursor-pointer group"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-bold text-dark-900 dark:text-white group-hover:text-brand-500 transition-colors truncate">{emp.full_name}</p>
+                        <p className="text-[10px] text-dark-400 truncate">{emp.role_name}</p>
+                      </div>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        emp.status === 'Present' || emp.status === 'Late'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-dark-100 dark:bg-dark-800 text-dark-400'
+                      }`}>
+                        {emp.status}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </Card.Content>
+      </Card>
+
+      {/* Grid of Store Details: Contact info, Active Staff list, Tasks */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Contact details */}
-        <Card className="md:col-span-1">
+        <Card className="lg:col-span-1">
           <Card.Header>
-            <Card.Title>Store Details</Card.Title>
-            <Card.Description>Branch contact information</Card.Description>
+            <Card.Title>Branch Details</Card.Title>
+            <Card.Description>Branch contact information & location</Card.Description>
           </Card.Header>
           <Card.Content className="space-y-4 text-xs">
             <div className="flex items-center gap-3 p-3 bg-dark-50 dark:bg-dark-950 border border-dark-100 dark:border-dark-850 rounded-lg">
@@ -206,96 +436,53 @@ export const StoreDetail: React.FC = () => {
           </Card.Content>
         </Card>
 
-        {/* Store KPIs */}
-        <div className="md:col-span-2 grid grid-cols-2 gap-4">
-          {[
-            { label: 'Active Staff', value: employees.length, icon: <Users className="h-5 w-5" />, color: 'text-brand-500 bg-brand-500/10' },
-            { label: 'Pending Deliveries', value: deliveries.filter(d => d.status === 'Pending').length, icon: <Truck className="h-5 w-5" />, color: 'text-yellow-500 bg-yellow-500/10' },
-            { label: 'Active Tasks', value: tasks.filter(t => t.status !== 'Completed' && t.status !== 'Done').length, icon: <ClipboardList className="h-5 w-5" />, color: 'text-purple-500 bg-purple-500/10' },
-            { label: 'Status', value: store.is_active ? 'Active' : 'Disabled', icon: <CheckCircle2 className="h-5 w-5" />, color: store.is_active ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10' }
-          ].map(({ label, value, icon, color }) => (
-            <Card key={label}>
-              <Card.Content className="p-6 flex items-center gap-4">
-                <div className={`p-3.5 rounded-xl ${color}`}>{icon}</div>
-                <div>
-                  <p className="text-[10px] font-bold text-dark-400 uppercase tracking-wide">{label}</p>
-                  <p className="text-2xl font-black text-dark-900 dark:text-white leading-tight mt-0.5">{value}</p>
-                </div>
-              </Card.Content>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Grid of details: Employees list and Tasks list */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Employees */}
-        <Card>
-          <Card.Header>
-            <Card.Title>Store Staff ({employees.length})</Card.Title>
-            <Card.Description>Employees assigned to this branch</Card.Description>
+        {/* Employees Table with Clickable Rows to Employee Profile */}
+        <Card className="lg:col-span-2">
+          <Card.Header className="flex justify-between items-center">
+            <div>
+              <Card.Title>Store Staff Roster ({employees.length})</Card.Title>
+              <Card.Description>Click any staff row to view individual profile & timesheets</Card.Description>
+            </div>
           </Card.Header>
           <Card.Content className="p-0 overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-dark-50/50 dark:bg-dark-900/50 border-b border-dark-100 dark:border-dark-800 text-[10px] font-bold text-dark-500 dark:text-dark-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-4">Name</th>
+                  <th className="py-2.5 px-4">Staff Name</th>
                   <th className="py-2.5 px-4">Role</th>
-                  <th className="py-2.5 px-4">Contact</th>
+                  <th className="py-2.5 px-4">Status ({dateString})</th>
+                  <th className="py-2.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dark-100 dark:divide-dark-800 text-xs">
+              <tbody className="divide-y divide-dark-100 dark:divide-dark-800 text-xs font-medium">
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="py-6 text-center text-dark-450">No employees assigned to this store branch.</td>
+                    <td colSpan={4} className="py-6 text-center text-dark-450">No employees assigned to this store branch.</td>
                   </tr>
                 ) : (
                   employees.map((emp) => (
-                    <tr key={emp.id} className="hover:bg-dark-50/20 dark:hover:bg-dark-900/20">
-                      <td className="py-3 px-4 font-bold text-dark-900 dark:text-white">{emp.full_name}</td>
+                    <tr
+                      key={emp.id}
+                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      className="hover:bg-dark-50/50 dark:hover:bg-dark-900/30 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-3 px-4 font-bold text-dark-900 dark:text-white group-hover:text-brand-500 transition-colors">
+                        {emp.full_name}
+                      </td>
                       <td className="py-3 px-4"><RoleNameBadge roleName={emp.role_name} /></td>
-                      <td className="py-3 px-4 text-dark-500">{emp.email}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </Card.Content>
-        </Card>
-
-        {/* Tasks */}
-        <Card>
-          <Card.Header>
-            <Card.Title>Active Tasks ({tasks.filter(t => t.status !== 'Completed' && t.status !== 'Done').length})</Card.Title>
-            <Card.Description>Assigned branch operational tasks</Card.Description>
-          </Card.Header>
-          <Card.Content className="p-0 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-dark-50/50 dark:bg-dark-900/50 border-b border-dark-100 dark:border-dark-800 text-[10px] font-bold text-dark-500 dark:text-dark-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-4">Task</th>
-                  <th className="py-2.5 px-4">Priority</th>
-                  <th className="py-2.5 px-4 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-100 dark:divide-dark-800 text-xs">
-                {tasks.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="py-6 text-center text-dark-450">No tasks created for this store.</td>
-                  </tr>
-                ) : (
-                  tasks.slice(0, 5).map((task) => (
-                    <tr key={task.id} className="hover:bg-dark-50/20 dark:hover:bg-dark-900/20">
-                      <td className="py-3 px-4 font-bold text-dark-900 dark:text-white truncate max-w-[150px]">{task.title}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                          task.priority === 'Critical' || task.priority === 'Urgent' ? 'bg-red-500/10 text-red-600' :
-                          task.priority === 'High' ? 'bg-orange-500/10 text-orange-600' : 'bg-dark-100 text-dark-600'
+                        <span className={`inline-flex items-center gap-1 font-semibold text-[11px] ${
+                          emp.status === 'Present' || emp.status === 'Late' ? 'text-emerald-600 dark:text-emerald-400' : 'text-dark-400'
                         }`}>
-                          {task.priority}
+                          <span className={`h-1.5 w-1.5 rounded-full ${emp.status === 'Present' || emp.status === 'Late' ? 'bg-emerald-500' : 'bg-dark-400'}`} />
+                          {emp.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-semibold text-dark-700 dark:text-dark-300">{task.status}</td>
+                      <td className="py-3 px-4 text-right">
+                        <span className="text-[10px] font-bold text-brand-500 group-hover:underline inline-flex items-center gap-1">
+                          View Profile <ArrowRight className="h-3 w-3" />
+                        </span>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -307,3 +494,5 @@ export const StoreDetail: React.FC = () => {
     </div>
   );
 };
+
+export default StoreDetail;

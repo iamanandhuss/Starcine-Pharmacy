@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  DollarSign, RefreshCw, Plus, Award, Truck
+  IndianRupee, RefreshCw, Plus, Award, Truck
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -56,34 +56,22 @@ export const StoreSales: React.FC = () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('sales')
+        .from('sales_registers')
         .select('*')
         .eq('branch_id', selectedStoreId)
-        .order('date', { ascending: true });
+        .order('sales_date', { ascending: true });
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        // Fallback default starting sales metrics over the last week
-        const defaults: DailySalesRecord[] = [
-          { date: '2026-07-09', counter_sales: 3200, delivery_sales: 1200, other_sales: 300, total_sales: 4700 },
-          { date: '2026-07-10', counter_sales: 3500, delivery_sales: 1500, other_sales: 400, total_sales: 5400 },
-          { date: '2026-07-11', counter_sales: 2900, delivery_sales: 1100, other_sales: 200, total_sales: 4200 },
-          { date: '2026-07-12', counter_sales: 3100, delivery_sales: 1400, other_sales: 300, total_sales: 4800 },
-          { date: '2026-07-13', counter_sales: 4100, delivery_sales: 1800, other_sales: 500, total_sales: 6400 },
-          { date: '2026-07-14', counter_sales: 3800, delivery_sales: 1600, other_sales: 400, total_sales: 5800 },
-          { date: '2026-07-15', counter_sales: 3450, delivery_sales: 1250, other_sales: 350, total_sales: 5050 },
-        ];
-        setSalesRecords(defaults);
-      } else {
-        setSalesRecords(data.map((r: any) => ({
-          date: r.date,
-          counter_sales: Number(r.counter_sales) || 0,
-          delivery_sales: Number(r.delivery_sales) || 0,
-          other_sales: Number(r.other_sales) || 0,
-          total_sales: Number(r.total_sales) || 0,
-        })));
-      }
+      const records = (data || []).map((r: any) => ({
+        date: r.sales_date,
+        counter_sales: Number(r.counter_sales) || 0,
+        delivery_sales: Number(r.delivery_sales) || 0,
+        other_sales: Number(r.other_sales) || 0,
+        total_sales: (Number(r.counter_sales) || 0) + (Number(r.delivery_sales) || 0) + (Number(r.other_sales) || 0),
+      }));
+
+      setSalesRecords(records);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -112,20 +100,19 @@ export const StoreSales: React.FC = () => {
     try {
       const payload = {
         branch_id: selectedStoreId,
-        date: today,
+        sales_date: today,
         counter_sales: c,
         delivery_sales: d,
-        other_sales: o,
-        total_sales: total
+        other_sales: o
       };
 
       const { error } = await supabase
-        .from('sales')
-        .upsert(payload, { onConflict: 'branch_id,date' });
+        .from('sales_registers')
+        .upsert(payload, { onConflict: 'sales_date,branch_id' });
 
       if (error) throw error;
 
-      showToast(`Recorded sales for ${today}: $${total.toLocaleString()}`);
+      showToast(`Recorded sales for ${today}: ₹${total.toLocaleString()}`);
       setIsRecordModalOpen(false);
       setCounterSales('');
       setDeliverySales('');
@@ -190,10 +177,10 @@ export const StoreSales: React.FC = () => {
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Counter POS Sales</p>
-              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">${totalCounter.toLocaleString()}</h3>
+              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">₹{totalCounter.toLocaleString()}</h3>
             </div>
             <span className="p-2 bg-blue-500/10 text-blue-600 rounded-lg">
-              <DollarSign className="h-4 w-4" />
+              <IndianRupee className="h-4 w-4" />
             </span>
           </Card.Content>
         </Card>
@@ -201,7 +188,7 @@ export const StoreSales: React.FC = () => {
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Delivery Sales</p>
-              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">${totalDelivery.toLocaleString()}</h3>
+              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">₹{totalDelivery.toLocaleString()}</h3>
             </div>
             <span className="p-2 bg-purple-500/10 text-purple-600 rounded-lg">
               <Truck className="h-4 w-4" />
@@ -212,7 +199,7 @@ export const StoreSales: React.FC = () => {
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Other Revenue</p>
-              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">${totalOther.toLocaleString()}</h3>
+              <h3 className="text-lg font-black mt-1 text-dark-800 dark:text-dark-200">₹{totalOther.toLocaleString()}</h3>
             </div>
             <span className="p-2 bg-green-500/10 text-green-600 rounded-lg">
               <Award className="h-4 w-4" />
@@ -231,7 +218,7 @@ export const StoreSales: React.FC = () => {
               <div className="space-y-1">
                 <h4 className="text-xs font-black uppercase text-dark-400">Weekly Target Tracker</h4>
                 <h2 className="text-2xl font-black text-dark-900 dark:text-white">
-                  ${totalRevenue.toLocaleString()} / <span className="text-dark-400 font-bold">${weeklyTarget.toLocaleString()}</span>
+                  ₹{totalRevenue.toLocaleString()} / <span className="text-dark-400 font-bold">₹{weeklyTarget.toLocaleString()}</span>
                 </h2>
                 <p className="text-xs text-dark-500">Store has achieved {achievementPercent}% of weekly sales targets</p>
               </div>
@@ -291,11 +278,11 @@ export const StoreSales: React.FC = () => {
                         <div>
                           <p className="font-bold text-dark-800 dark:text-dark-200">{rec.date}</p>
                           <div className="flex gap-2 text-[9px] text-dark-400 font-mono mt-0.5">
-                            <span>Ctr: ${rec.counter_sales}</span>
-                            <span>Del: ${rec.delivery_sales}</span>
+                            <span>Ctr: ₹{rec.counter_sales}</span>
+                            <span>Del: ₹{rec.delivery_sales}</span>
                           </div>
                         </div>
-                        <span className="font-black text-brand-600 dark:text-brand-400">${rec.total_sales.toLocaleString()}</span>
+                        <span className="font-black text-brand-600 dark:text-brand-400">₹{rec.total_sales.toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -309,9 +296,9 @@ export const StoreSales: React.FC = () => {
       {/* Create Sales Modal */}
       <Modal isOpen={isRecordModalOpen} onClose={() => setIsRecordModalOpen(false)} title="💰 Record Daily Sales Register">
         <form onSubmit={handleRecordSalesSubmit} className="space-y-4">
-          <Input label="Counter sales register ($)" type="number" placeholder="e.g. 3500" value={counterSales} onChange={e => setCounterSales(e.target.value)} required />
-          <Input label="Delivery sales register ($)" type="number" placeholder="e.g. 1500" value={deliverySales} onChange={e => setDeliverySales(e.target.value)} />
-          <Input label="Other sales register ($)" type="number" placeholder="e.g. 300" value={otherSales} onChange={e => setOtherSales(e.target.value)} />
+          <Input label="Counter sales register (₹)" type="number" placeholder="e.g. 3500" value={counterSales} onChange={e => setCounterSales(e.target.value)} required />
+          <Input label="Delivery sales register (₹)" type="number" placeholder="e.g. 1500" value={deliverySales} onChange={e => setDeliverySales(e.target.value)} />
+          <Input label="Other sales register (₹)" type="number" placeholder="e.g. 300" value={otherSales} onChange={e => setOtherSales(e.target.value)} />
           
           <div className="flex justify-end gap-2 pt-2 border-t border-dark-100 dark:border-dark-800">
             <Button variant="ghost" onClick={() => setIsRecordModalOpen(false)}>Cancel</Button>

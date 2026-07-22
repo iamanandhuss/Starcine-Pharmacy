@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   CalendarCheck, Truck, Megaphone, Activity, AlertCircle, Clock, RefreshCw,
-  DollarSign, ShieldAlert, CheckCircle2, UserPlus, Trophy
+  IndianRupee, ShieldAlert, CheckCircle2, UserPlus, Trophy, Users
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -77,6 +77,7 @@ export const StoreDashboard: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Quick Action Modal states
   const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
@@ -107,6 +108,7 @@ export const StoreDashboard: React.FC = () => {
         { count: openIssuesCount },
         { data: announcementData },
         { data: activityData },
+        { count: pendingCountRes },
       ] = await Promise.all([
         supabase.from('users').select('id', { count: 'exact', head: true }).eq('branch_id', selectedStoreId).eq('is_active', true),
         supabase.from('attendance').select('id', { count: 'exact', head: true })
@@ -117,30 +119,40 @@ export const StoreDashboard: React.FC = () => {
         supabase.from('activity_logs').select('id', { count: 'exact', head: true }).eq('branch_id', selectedStoreId).eq('action', 'Issue Reported'),
         supabase.from('announcements').select('id, title, message, created_at').or(`branch_id.eq.${selectedStoreId},branch_id.is.null`).order('created_at', { ascending: false }).limit(3),
         supabase.from('activity_logs').select('id, action, module, description, created_at').eq('branch_id', selectedStoreId).order('created_at', { ascending: false }).limit(4),
+        supabase.from('users').select('id', { count: 'exact', head: true }).eq('branch_id', selectedStoreId).eq('approval_status', 'pending'),
       ]);
 
       const empCount = totalEmployees ?? 0;
       const presentCount = presentToday ?? 0;
       const absentCount = Math.max(0, empCount - presentCount);
 
-      // Compute sales sum in simulation mode or actual database if values exist
-      const computedSales = 3450; 
+      // Compute live sales sum from sales_registers
+      const { data: todaySalesData } = await supabase
+        .from('sales_registers')
+        .select('total_sales')
+        .eq('branch_id', selectedStoreId)
+        .eq('register_date', today);
+
+      const realSalesSum = (todaySalesData || []).reduce((acc: number, curr: any) => acc + (Number(curr.total_sales) || 0), 0);
+      const attendanceRate = empCount > 0 ? (presentCount / empCount) * 100 : 100;
+      const computedHealthScore = Math.min(100, Math.max(60, Math.round(attendanceRate * 0.6 + 40)));
 
       setStats({
         totalEmployees: empCount,
         presentToday: presentCount,
         absentToday: absentCount,
-        lateToday: Math.round(presentCount * 0.1), // simulation lateness
+        lateToday: 0,
         todayDeliveries: todayDeliveries ?? 0,
         pendingTasks: pendingTasks ?? 0,
         openIssuesCount: openIssuesCount ?? 0,
-        todaySales: computedSales,
-        healthScore: 92, // mock healthy pharmacy ops grade
-        championshipRank: 2, // standing
+        todaySales: realSalesSum,
+        healthScore: computedHealthScore,
+        championshipRank: 1,
       });
 
       setAnnouncements((announcementData as Announcement[]) || []);
       setRecentActivity((activityData as ActivityLog[]) || []);
+      setPendingCount(pendingCountRes ?? 0);
     } catch (err: any) {
       console.error('Error fetching store stats:', err.message);
     } finally {
@@ -160,7 +172,7 @@ export const StoreDashboard: React.FC = () => {
       return;
     }
     setStats(prev => ({ ...prev, todaySales: prev.todaySales + val }));
-    showToast(`Registered today's sales: $${val.toLocaleString()}`);
+    showToast(`Registered today's sales: ₹${val.toLocaleString()}`);
     setIsSalesModalOpen(false);
     setCounterSalesInput('');
     setDeliverySalesInput('');
@@ -248,74 +260,116 @@ export const StoreDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Pending Approvals Callout */}
+      {!loading && pendingCount > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="p-2 bg-amber-500/20 text-amber-500 rounded-lg animate-pulse">
+              <Users className="h-5 w-5" />
+            </span>
+            <div>
+              <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400">
+                Action Required: Pending Approvals
+              </h4>
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                You have {pendingCount} new employee registration{pendingCount > 1 ? 's' : ''} waiting for approval.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/employees')}
+            className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 text-xs font-bold"
+          >
+            Review Requests
+          </Button>
+        </div>
+      )}
+
       {/* KPI Display Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         
         {/* Store Health */}
-        <Card className="hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card
+          onClick={() => navigate('/store/performance')}
+          className="hover:shadow-lg hover:border-emerald-500/40 transition-all cursor-pointer relative overflow-hidden group"
+        >
           <div className="absolute top-0 left-0 w-full h-1 bg-green-500" />
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Health Score</p>
-              <h3 className="text-xl font-black mt-1 text-green-600 dark:text-green-400">{stats.healthScore}/100</h3>
+              <h3 className="text-xl font-black mt-1 text-green-600 dark:text-green-400 group-hover:scale-105 transition-transform">{stats.healthScore}/100</h3>
             </div>
-            <span className="p-2 bg-green-500/10 text-green-600 rounded-lg">
+            <span className="p-2 bg-green-500/10 text-green-600 rounded-lg group-hover:scale-110 transition-transform">
               <CheckCircle2 className="h-4 w-4" />
             </span>
           </Card.Content>
         </Card>
 
         {/* Championship Standings */}
-        <Card className="hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card
+          onClick={() => navigate('/store/performance')}
+          className="hover:shadow-lg hover:border-yellow-500/40 transition-all cursor-pointer relative overflow-hidden group"
+        >
           <div className="absolute top-0 left-0 w-full h-1 bg-yellow-500" />
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Standings Rank</p>
-              <h3 className="text-xl font-black mt-1 text-yellow-600 dark:text-yellow-500">{stats.championshipRank}nd Place</h3>
+              <h3 className="text-xl font-black mt-1 text-yellow-600 dark:text-yellow-500 group-hover:scale-105 transition-transform">{stats.championshipRank}nd Place</h3>
             </div>
-            <span className="p-2 bg-yellow-500/10 text-yellow-600 rounded-lg">
+            <span className="p-2 bg-yellow-500/10 text-yellow-600 rounded-lg group-hover:scale-110 transition-transform">
               <Trophy className="h-4 w-4" />
             </span>
           </Card.Content>
         </Card>
 
         {/* Today's Sales */}
-        <Card className="hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card
+          onClick={() => navigate('/store/sales')}
+          className="hover:shadow-lg hover:border-blue-500/40 transition-all cursor-pointer relative overflow-hidden group"
+        >
           <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Today's Sales</p>
-              <h3 className="text-xl font-black mt-1 text-blue-600 dark:text-blue-400">${stats.todaySales.toLocaleString()}</h3>
+              <h3 className="text-xl font-black mt-1 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">₹{stats.todaySales.toLocaleString()}</h3>
             </div>
-            <span className="p-2 bg-blue-500/10 text-blue-600 rounded-lg">
-              <DollarSign className="h-4 w-4" />
+            <span className="p-2 bg-blue-500/10 text-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+              <IndianRupee className="h-4 w-4" />
             </span>
           </Card.Content>
         </Card>
 
         {/* Today's Attendance */}
-        <Card className="hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card
+          onClick={() => navigate('/store/attendance')}
+          className="hover:shadow-lg hover:border-brand-500/40 transition-all cursor-pointer relative overflow-hidden group"
+        >
           <div className="absolute top-0 left-0 w-full h-1 bg-brand-500" />
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Present Today</p>
-              <h3 className="text-xl font-black mt-1 text-brand-600">{stats.presentToday}/{stats.totalEmployees}</h3>
+              <h3 className="text-xl font-black mt-1 text-brand-600 group-hover:scale-105 transition-transform">{stats.presentToday}/{stats.totalEmployees}</h3>
             </div>
-            <span className="p-2 bg-brand-500/10 text-brand-500 rounded-lg">
+            <span className="p-2 bg-brand-500/10 text-brand-500 rounded-lg group-hover:scale-110 transition-transform">
               <CalendarCheck className="h-4 w-4" />
             </span>
           </Card.Content>
         </Card>
 
         {/* Deliveries */}
-        <Card className="hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card
+          onClick={() => navigate('/store/deliveries')}
+          className="hover:shadow-lg hover:border-purple-500/40 transition-all cursor-pointer relative overflow-hidden group"
+        >
           <div className="absolute top-0 left-0 w-full h-1 bg-purple-500" />
           <Card.Content className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-dark-400 uppercase">Home Deliveries</p>
-              <h3 className="text-xl font-black mt-1 text-purple-600 dark:text-purple-400">{stats.todayDeliveries} Dispatched</h3>
+              <h3 className="text-xl font-black mt-1 text-purple-600 dark:text-purple-400 group-hover:scale-105 transition-transform">{stats.todayDeliveries} Dispatched</h3>
             </div>
-            <span className="p-2 bg-purple-500/10 text-purple-600 rounded-lg">
+            <span className="p-2 bg-purple-500/10 text-purple-600 rounded-lg group-hover:scale-110 transition-transform">
               <Truck className="h-4 w-4" />
             </span>
           </Card.Content>
@@ -324,15 +378,24 @@ export const StoreDashboard: React.FC = () => {
 
       {/* Lateness, Tasks, Issues strip */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-amber-500/10 text-amber-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-amber-500/20">
+        <div
+          onClick={() => navigate('/store/attendance')}
+          className="bg-amber-500/10 text-amber-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+        >
           <span>Late checks today:</span>
           <span className="text-sm font-black">{stats.lateToday} Staff</span>
         </div>
-        <div className="bg-blue-500/10 text-blue-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-blue-500/20">
+        <div
+          onClick={() => navigate('/store/checklist')}
+          className="bg-blue-500/10 text-blue-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-blue-500/20 hover:bg-blue-500/20 transition-colors cursor-pointer"
+        >
           <span>Pending tasks / checklist:</span>
           <span className="text-sm font-black">{stats.pendingTasks} Checklist</span>
         </div>
-        <div className="bg-red-500/10 text-red-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-red-500/20">
+        <div
+          onClick={() => navigate('/store/issues')}
+          className="bg-red-500/10 text-red-700 p-3 rounded-xl flex items-center justify-between text-xs font-bold border border-red-500/20 hover:bg-red-500/20 transition-colors cursor-pointer"
+        >
           <span>Open support incidents:</span>
           <span className="text-sm font-black">{stats.openIssuesCount} Incidents</span>
         </div>
@@ -367,7 +430,7 @@ export const StoreDashboard: React.FC = () => {
         {/* Weekly Sales Bar */}
         <Card>
           <Card.Header>
-            <Card.Title className="text-xs uppercase font-extrabold tracking-wide">Weekly Sales Performance ($)</Card.Title>
+            <Card.Title className="text-xs uppercase font-extrabold tracking-wide">Weekly Sales Performance (₹)</Card.Title>
           </Card.Header>
           <Card.Content className="h-60 p-2">
             <ResponsiveContainer width="100%" height="100%">
@@ -448,7 +511,7 @@ export const StoreDashboard: React.FC = () => {
             </Button>
             <Button
               onClick={() => setIsSalesModalOpen(true)}
-              leftIcon={<DollarSign className="h-4 w-4" />}
+              leftIcon={<IndianRupee className="h-4 w-4" />}
               variant="outline"
               className="w-full text-left justify-start"
             >
@@ -540,7 +603,7 @@ export const StoreDashboard: React.FC = () => {
       <Modal isOpen={isSalesModalOpen} onClose={() => setIsSalesModalOpen(false)} title="💰 Record Daily Sales Register">
         <form onSubmit={handleSalesSubmit} className="space-y-4">
           <Input
-            label="Counter POS Sales ($)"
+            label="Counter POS Sales (₹)"
             type="number"
             placeholder="e.g. 1500"
             value={counterSalesInput}
@@ -548,7 +611,7 @@ export const StoreDashboard: React.FC = () => {
             required
           />
           <Input
-            label="Delivery Sales ($)"
+            label="Delivery Sales (₹)"
             type="number"
             placeholder="e.g. 800"
             value={deliverySalesInput}

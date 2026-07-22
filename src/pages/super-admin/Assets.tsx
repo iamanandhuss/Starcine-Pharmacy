@@ -44,36 +44,27 @@ export const Assets: React.FC = () => {
 
       if (error) throw error;
 
-      // Fallback mockup assets if database is clean
-      if (!data || data.length === 0) {
-        setAssets([
-          { id: '1', asset_name: 'Main Prescription Rack A', asset_code: 'RCK-01A', x_position: 10, y_position: 12, width: 120, height: 40, background_color: '#3B82F6', border_color: '#1D4ED8', text_color: '#FFF', is_locked: true, is_visible: true, remarks: 'Fridge partition A', layout_id: null, asset_category_id: null, assigned_user_id: null, branches: { name: 'Main Street Pharmacy' } },
-          { id: '2', asset_name: 'Meal Break Table', asset_code: 'TBL-MB', x_position: 5, y_position: 25, width: 80, height: 80, background_color: '#10B981', border_color: '#047857', text_color: '#FFF', is_locked: false, is_visible: true, remarks: 'Staff break bay', layout_id: null, asset_category_id: null, assigned_user_id: null, branches: { name: 'Main Street Pharmacy' } },
-          { id: '3', asset_name: 'Narcotics Cabinet Refrigerator', asset_code: 'REF-NARC', x_position: 45, y_position: 8, width: 60, height: 60, background_color: '#EF4444', border_color: '#B91C1C', text_color: '#FFF', is_locked: true, is_visible: true, remarks: 'Requires key clearance', layout_id: null, asset_category_id: null, assigned_user_id: null, branches: { name: 'Westside Branch' } },
-        ]);
-      } else {
-        const mapped = data.map((item: any) => ({
-          id: item.id,
-          asset_name: item.name || 'Layout Item',
-          asset_code: `CODE-${item.id.substring(0, 4).toUpperCase()}`,
-          category: item.type || 'Rack',
-          x_position: Number(item.x) || 0,
-          y_position: Number(item.y) || 0,
-          width: Number(item.width) || 100,
-          height: Number(item.height) || 60,
-          background_color: item.bg_color || '#3B82F6',
-          border_color: '#1E293B',
-          text_color: item.text_color || '#FFFFFF',
-          is_locked: !!item.locked,
-          is_visible: true,
-          remarks: item.remarks || '',
-          layout_id: null,
-          asset_category_id: null,
-          assigned_user_id: item.assigned_user_id || null,
-          branches: item.branches
-        })) as LayoutAsset[];
-        setAssets(mapped);
-      }
+      const mapped = (data || []).map((item: any) => ({
+        id: item.id,
+        asset_name: item.asset_name || item.name || 'Layout Item',
+        asset_code: item.asset_code || `CODE-${item.id.substring(0, 4).toUpperCase()}`,
+        category: item.category || item.type || 'Rack',
+        x_position: Number(item.x_position ?? item.x) || 0,
+        y_position: Number(item.y_position ?? item.y) || 0,
+        width: Number(item.width) || 100,
+        height: Number(item.height) || 60,
+        background_color: item.background_color || item.bg_color || '#3B82F6',
+        border_color: item.border_color || '#1E293B',
+        text_color: item.text_color || '#FFFFFF',
+        is_locked: !!(item.is_locked ?? item.locked),
+        is_visible: true,
+        remarks: item.remarks || '',
+        layout_id: null,
+        asset_category_id: null,
+        assigned_user_id: item.assigned_user_id || null,
+        branches: item.branches
+      })) as LayoutAsset[];
+      setAssets(mapped);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {

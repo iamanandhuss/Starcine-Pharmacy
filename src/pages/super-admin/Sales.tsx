@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, TrendingUp, Target, RefreshCw, BarChart3 } from 'lucide-react';
+import { IndianRupee, TrendingUp, Target, RefreshCw, BarChart3 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Toast } from '../../components/ui/Toast';
@@ -58,11 +58,11 @@ export const Sales: React.FC = () => {
             <div>
               <p className="text-xs text-dark-500 font-semibold uppercase">Total Monthly Sales</p>
               <h3 className="text-2xl font-black mt-1 text-dark-900 dark:text-white">
-                ${totalMonthlySales.toLocaleString()}
+                ₹{totalMonthlySales.toLocaleString()}
               </h3>
             </div>
             <span className="p-2.5 bg-green-500/10 text-green-600 rounded-xl">
-              <DollarSign className="h-5 w-5" />
+              <IndianRupee className="h-5 w-5" />
             </span>
           </Card.Content>
         </Card>
@@ -71,7 +71,7 @@ export const Sales: React.FC = () => {
             <div>
               <p className="text-xs text-dark-500 font-semibold uppercase">Platform Target</p>
               <h3 className="text-2xl font-black mt-1 text-dark-900 dark:text-white">
-                ${totalTargetSales.toLocaleString()}
+                ₹{totalTargetSales.toLocaleString()}
               </h3>
             </div>
             <span className="p-2.5 bg-brand-500/10 text-brand-600 rounded-xl">
@@ -120,13 +120,13 @@ export const Sales: React.FC = () => {
                   <tr key={metric.store_name} className="hover:bg-dark-50/20">
                     <td className="px-4 py-3.5 font-bold text-dark-800 dark:text-dark-200">{metric.store_name}</td>
                     <td className="px-3 py-3.5 text-right font-mono font-semibold text-dark-700 dark:text-dark-300">
-                      ${metric.daily_sales.toLocaleString()}
+                      ₹{metric.daily_sales.toLocaleString()}
                     </td>
                     <td className="px-3 py-3.5 text-right font-mono font-semibold text-dark-700 dark:text-dark-300">
-                      ${metric.monthly_sales.toLocaleString()}
+                      ₹{metric.monthly_sales.toLocaleString()}
                     </td>
                     <td className="px-3 py-3.5 text-right font-mono text-dark-500">
-                      ${metric.target_sales.toLocaleString()}
+                      ₹{metric.target_sales.toLocaleString()}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2 max-w-[150px] mx-auto">

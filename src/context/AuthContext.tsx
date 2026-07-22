@@ -19,6 +19,7 @@ export interface UserProfile {
   store_id: string | null; // alias for branch_id — same value
   store_name: string | null;
   is_active: boolean;
+  approval_status: string;
   role_name: string;
   employee_code: string | null;
   phone: string | null;
@@ -86,6 +87,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (fetchError) throw fetchError;
 
       if (dbUser) {
+        if (!dbUser.is_active || dbUser.approval_status === 'pending' || dbUser.approval_status === 'rejected') {
+          console.warn('User is inactive or pending/rejected approval. Signing out...');
+          await supabase.auth.signOut();
+          setProfile(null);
+          setRole('employee');
+          return;
+        }
+
         const resolvedRole = mapRoleName(dbUser.roles?.name, currentUser.email);
         const mappedProfile: UserProfile = {
           id: dbUser.id,
@@ -99,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           store_id: dbUser.branch_id, // alias
           store_name: dbUser.branches?.name || null,
           is_active: dbUser.is_active,
+          approval_status: dbUser.approval_status || 'approved',
           role_name: dbUser.roles?.name || 'Pharmacist',
           employee_code: dbUser.employee_code || null,
           phone: dbUser.phone || null,
@@ -171,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         store_id: insertedUser.branch_id,
         store_name: insertedUser.branches?.name || null,
         is_active: insertedUser.is_active,
+        approval_status: insertedUser.approval_status || 'approved',
         role_name: insertedUser.roles?.name || 'Pharmacist',
         employee_code: insertedUser.employee_code || null,
         phone: insertedUser.phone || null,
@@ -195,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       store_id: null,
       store_name: null,
       is_active: true,
+      approval_status: 'approved',
       role_name: metaRole === 'super_admin' ? 'Super Admin' :
                  metaRole === 'store_admin' ? 'Store Admin' : 'Pharmacist',
       employee_code: null,
@@ -203,7 +215,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     setRole(resolvedRole);
   };
-
   const refreshProfile = async () => {
     if (user) await syncProfile(user, session);
   };

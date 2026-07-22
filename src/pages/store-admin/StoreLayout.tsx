@@ -102,37 +102,26 @@ export const StoreLayout: React.FC = () => {
 
       setEmployees(empRes.data || []);
 
-      if (!assetsRes.data || assetsRes.data.length === 0) {
-        // Fallback default starting layout
-        const defaults: LayoutAsset[] = [
-          { id: '1', asset_name: 'Main Counter A', asset_code: 'CTR-A', category: 'Counter', x_position: 100, y_position: 150, width: 200, height: 60, rotation: 0, background_color: '#3B82F6', border_color: '#1D4ED8', text_color: '#FFFFFF', is_locked: false, remarks: 'Main patient checkin', assigned_user_id: null, frequency: 'Daily' },
-          { id: '2', asset_name: 'Medication Rack #1', asset_code: 'RCK-1', category: 'Rack', x_position: 400, y_position: 100, width: 120, height: 80, rotation: 0, background_color: '#10B981', border_color: '#047857', text_color: '#FFFFFF', is_locked: false, remarks: 'A-G catalog shelves', assigned_user_id: null, frequency: 'Weekly' },
-          { id: '3', asset_name: 'Cold-chain Fridge', asset_code: 'REF-01', category: 'Refrigerator', x_position: 400, y_position: 250, width: 80, height: 80, rotation: 0, background_color: '#EF4444', border_color: '#B91C1C', text_color: '#FFFFFF', is_locked: true, remarks: 'Insulin stocks', assigned_user_id: null, frequency: 'Daily' },
-        ];
-        setAssets(defaults);
-      } else {
-        // Map database columns to local structure
-        const mapped = assetsRes.data.map(item => ({
-          id: item.id,
-          asset_name: item.name || 'Layout Item',
-          asset_code: `CODE-${item.id.substring(0, 4).toUpperCase()}`,
-          category: item.type || 'Rack',
-          x_position: Number(item.x) || 0,
-          y_position: Number(item.y) || 0,
-          width: Number(item.width) || 100,
-          height: Number(item.height) || 60,
-          rotation: Number(item.rotation) || 0,
-          background_color: item.bg_color || '#3B82F6',
-          border_color: '#1E293B',
-          text_color: item.text_color || '#FFFFFF',
-          is_locked: !!item.locked,
-          remarks: item.remarks || '',
-          assigned_user_id: item.assigned_user_id || null,
-          frequency: item.frequency || 'Daily',
-          branch_id: item.branch_id
-        })) as LayoutAsset[];
-        setAssets(mapped);
-      }
+      const mapped = (assetsRes.data || []).map(item => ({
+        id: item.id,
+        asset_name: item.asset_name || item.name || 'Layout Item',
+        asset_code: item.asset_code || `CODE-${item.id.substring(0, 4).toUpperCase()}`,
+        category: item.category || item.type || 'Rack',
+        x_position: Number(item.x_position ?? item.x) || 0,
+        y_position: Number(item.y_position ?? item.y) || 0,
+        width: Number(item.width) || 100,
+        height: Number(item.height) || 60,
+        rotation: Number(item.rotation) || 0,
+        background_color: item.background_color || item.bg_color || '#3B82F6',
+        border_color: item.border_color || '#1E293B',
+        text_color: item.text_color || '#FFFFFF',
+        is_locked: !!(item.is_locked ?? item.locked),
+        remarks: item.remarks || '',
+        assigned_user_id: item.assigned_user_id || null,
+        frequency: item.frequency || 'Daily',
+        branch_id: item.branch_id
+      })) as LayoutAsset[];
+      setAssets(mapped);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {

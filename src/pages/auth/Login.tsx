@@ -69,6 +69,33 @@ export const Login: React.FC = () => {
         return;
       }
 
+      // Check if user is active/approved
+      const { data: dbUser, error: dbError } = await supabase
+        .from('users')
+        .select('is_active, approval_status')
+        .eq('auth_user_id', data.user.id)
+        .maybeSingle();
+
+      if (dbError) {
+        console.warn('Error checking user approval status:', dbError.message);
+      } else if (dbUser) {
+        if (!dbUser.is_active) {
+          setErrorMsg('Your account has been deactivated. Please contact your administrator.');
+          await supabase.auth.signOut();
+          return;
+        }
+        if (dbUser.approval_status === 'pending') {
+          setErrorMsg('Your account is pending approval by a Super Admin. Please try again later.');
+          await supabase.auth.signOut();
+          return;
+        }
+        if (dbUser.approval_status === 'rejected') {
+          setErrorMsg('Your account request has been rejected. Please contact support.');
+          await supabase.auth.signOut();
+          return;
+        }
+      }
+
       setSuccessMsg('Welcome back! Redirecting...');
 
       setTimeout(() => {

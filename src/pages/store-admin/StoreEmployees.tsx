@@ -25,6 +25,7 @@ interface EmployeeProfileItem {
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   address: string | null;
+  approval_status?: string | null;
   roles?: { name: string } | null;
   departments?: { name: string } | null;
 }
@@ -150,7 +151,7 @@ export const StoreEmployees: React.FC = () => {
     e.preventDefault();
     if (!email.trim()) return;
 
-    const payload = {
+    const payload: any = {
       first_name: firstName,
       last_name: lastName,
       full_name: `${firstName} ${lastName}`.trim(),
@@ -166,6 +167,10 @@ export const StoreEmployees: React.FC = () => {
       is_active: true,
     };
 
+    if (!selectedEmp) {
+      payload.approval_status = 'pending';
+    }
+
     try {
       if (selectedEmp) {
         const { error } = await supabase
@@ -179,7 +184,7 @@ export const StoreEmployees: React.FC = () => {
           .from('users')
           .insert([payload]);
         if (error) throw error;
-        showToast('Employee created successfully');
+        showToast('Employee created and pending Super Admin approval');
       }
       setIsModalOpen(false);
       fetchData();
@@ -304,9 +309,21 @@ export const StoreEmployees: React.FC = () => {
                         )}
                       </td>
                       <td className="px-3 py-3.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.is_active ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-500'}`}>
-                          {emp.is_active ? 'Active' : 'Deactivated'}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.is_active ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-500'}`}>
+                            {emp.is_active ? 'Active' : 'Deactivated'}
+                          </span>
+                          {emp.approval_status === 'pending' && (
+                            <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 rounded-full text-[9px] font-bold">
+                              Pending Approval
+                            </span>
+                          )}
+                          {emp.approval_status === 'rejected' && (
+                            <span className="px-2 py-0.5 bg-red-500/10 text-red-55 text-red-500 rounded-full text-[9px] font-bold">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-right space-x-1">
                         <button

@@ -77,45 +77,7 @@ export const StoreGrooming: React.FC = () => {
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        // Fallback mock grooming queue
-        setTasks([
-          {
-            id: 'g1',
-            employee_name: 'David Lightman',
-            task_date: today,
-            frequency: 'Daily',
-            status: 'Pending',
-            before_image_url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=250&auto=format&fit=crop',
-            after_image_url: 'https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=250&auto=format&fit=crop',
-            comments: null,
-            created_at: `${today}T08:12:00Z`
-          },
-          {
-            id: 'g2',
-            employee_name: 'Jennifer Mack',
-            task_date: today,
-            frequency: 'Daily',
-            status: 'Approved',
-            before_image_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=250&auto=format&fit=crop',
-            after_image_url: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=250&auto=format&fit=crop',
-            comments: 'Counters scrubbed, sanitation checklist matched.',
-            created_at: `${today}T07:45:00Z`
-          },
-          {
-            id: 'g3',
-            employee_name: 'Dr. John Falken',
-            task_date: today,
-            frequency: 'Weekly',
-            status: 'Rejected',
-            before_image_url: 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?w=250&auto=format&fit=crop',
-            after_image_url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=250&auto=format&fit=crop',
-            comments: 'Left-side shelving still dusty. Requires re-cleaning.',
-            created_at: `${today}T09:02:00Z`
-          }
-        ]);
-      } else {
-        const mapped = data.map((t: any) => {
+      const mapped = (data || []).map((t: any) => {
           const emp = empList.find(e => e.id === t.assigned_user_id);
           return {
             id: t.id,
@@ -131,7 +93,6 @@ export const StoreGrooming: React.FC = () => {
           };
         });
         setTasks(mapped);
-      }
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
