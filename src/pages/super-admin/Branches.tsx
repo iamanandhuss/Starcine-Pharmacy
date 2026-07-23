@@ -15,6 +15,7 @@ interface Branch {
   address: string | null;
   phone: string | null;
   email: string | null;
+  location: string | null;
   manager_name: string | null;
   is_active: boolean;
   created_at: string;
@@ -30,6 +31,7 @@ export const Branches: React.FC = () => {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [address, setAddress] = useState('');
+  const [location, setLocation] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [manager, setManager] = useState('');
@@ -69,6 +71,7 @@ export const Branches: React.FC = () => {
       setName(branch.name);
       setCode(branch.code || branch.store_code || '');
       setAddress(branch.address || '');
+      setLocation(branch.location || '');
       setPhone(branch.phone || '');
       setEmail(branch.email || '');
       setManager(branch.manager_name || '');
@@ -77,6 +80,7 @@ export const Branches: React.FC = () => {
       setName('');
       setCode('');
       setAddress('');
+      setLocation('');
       setPhone('');
       setEmail('');
       setManager('');
@@ -97,6 +101,7 @@ export const Branches: React.FC = () => {
       code,
       store_code: code, // keep both aligned
       address,
+      location,
       phone,
       email,
       manager_name: manager,
@@ -269,6 +274,7 @@ export const Branches: React.FC = () => {
           <Input label="Manager Name" placeholder="e.g. Dr. John Doe" value={manager} onChange={e => setManager(e.target.value)} />
           <Input label="Phone Number" placeholder="e.g. 555-0199" value={phone} onChange={e => setPhone(e.target.value)} />
           <Input label="Email Address" type="email" placeholder="e.g. westside@pharmacy.com" value={email} onChange={e => setEmail(e.target.value)} />
+          <Input label="Location (City/Area)" placeholder="e.g. Downtown" value={location} onChange={e => setLocation(e.target.value)} />
           <div>
             <label className="block text-[10px] font-bold text-dark-400 uppercase mb-1">Full Address</label>
             <textarea

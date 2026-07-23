@@ -14,6 +14,8 @@ export interface Store {
   email: string | null;
   manager_name: string | null;
   is_active: boolean;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface StoreContextType {
@@ -50,7 +52,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const { data, error } = await supabase
         .from('branches')
-        .select('id, name, store_code, code, address, phone, email, manager_name, is_active')
+        .select('id, name, store_code, code, address, phone, email, manager_name, is_active, latitude, longitude')
         .order('name', { ascending: true });
 
       if (error) throw error;

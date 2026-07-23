@@ -43,6 +43,8 @@ interface Delivery {
   // Joins
   assigned_driver?: UserProfile | null;
   branch_name?: string | null;
+  branch_lat?: number | null;
+  branch_lon?: number | null;
 }
 
 interface GeocodedPlace {
@@ -79,10 +81,10 @@ export const HomeDelivery: React.FC = () => {
   const [drivers, setDrivers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fixed Delivery Rate per KM (default ₹20 / km)
+  // Fixed Delivery Rate per KM (default ₹4 / km)
   const [ratePerKm, setRatePerKm] = useState<number>(() => {
     const saved = localStorage.getItem('starcine_delivery_rate_per_km');
-    return saved ? parseFloat(saved) : 20;
+    return saved ? parseFloat(saved) : 4;
   });
 
   const handleUpdateRatePerKm = (newRate: number) => {
@@ -116,6 +118,44 @@ export const HomeDelivery: React.FC = () => {
   const [geocodingLoading, setGeocodingLoading] = useState(false);
   const [geocodedPlaces, setGeocodedPlaces] = useState<GeocodedPlace[]>([]);
   const [selectedPlaceName, setSelectedPlaceName] = useState<string | null>(null);
+  const [mapLink, setMapLink] = useState('');
+
+  const handlePhoneBlur = async () => {
+    const phone = formData.customer_phone.trim();
+    if (phone.length < 5) return;
+    try {
+      const { data, error } = await supabase.from('customer_address_book').select('*').eq('phone', phone).maybeSingle();
+      if (data) {
+        setFormData(prev => ({
+          ...prev,
+          customer_name: data.name || prev.customer_name,
+          customer_address: data.address || prev.customer_address,
+          latitude: data.latitude ? String(data.latitude) : prev.latitude,
+          longitude: data.longitude ? String(data.longitude) : prev.longitude
+        }));
+        showToast('Customer details auto-filled from address book!');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleMapLinkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMapLink(val);
+    const match = val.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (match) {
+      setFormData(prev => ({
+        ...prev,
+        latitude: parseFloat(match[1]).toFixed(6),
+        longitude: parseFloat(match[2]).toFixed(6)
+      }));
+      setSelectedPlaceName("Parsed from Google Maps link");
+      showToast(`Detected location: ${match[1]}, ${match[2]}`);
+    } else if (val.includes('goo.gl') || val.includes('maps.app.goo.gl')) {
+      showToast('Short links cannot be parsed automatically. Please open it in a browser and paste the full URL.', 'error');
+    }
+  };
 
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
 
@@ -195,6 +235,8 @@ export const HomeDelivery: React.FC = () => {
           return {
             ...d,
             branch_name: matchedStore?.name || 'Main Pharmacy Store',
+            branch_lat: matchedStore?.latitude,
+            branch_lon: matchedStore?.longitude,
             assigned_driver: matchedDriver || null
           };
         });
@@ -330,10 +372,21 @@ export const HomeDelivery: React.FC = () => {
       if (error) throw error;
 
       if (data && data[0]) {
+        // Upsert customer address book
+        await supabase.from('customer_address_book').upsert({
+          phone: formData.customer_phone.trim(),
+          name: formData.customer_name.trim(),
+          address: formData.customer_address.trim(),
+          latitude: latNum,
+          longitude: lngNum
+        }, { onConflict: 'phone' });
+
         const matchedStore = allStores.find(s => s.id === targetBranchId);
         const fullNew: Delivery = {
           ...data[0],
           branch_name: matchedStore?.name || 'Store Branch',
+          branch_lat: matchedStore?.latitude,
+          branch_lon: matchedStore?.longitude,
           assigned_driver: null
         };
         setDeliveries([fullNew, ...deliveries]);
@@ -404,6 +457,15 @@ export const HomeDelivery: React.FC = () => {
         .eq('id', selectedDelivery.id);
 
       if (error) throw error;
+
+      // Upsert customer address book
+      await supabase.from('customer_address_book').upsert({
+        phone: formData.customer_phone.trim(),
+        name: formData.customer_name.trim(),
+        address: formData.customer_address.trim(),
+        latitude: latNum,
+        longitude: lngNum
+      }, { onConflict: 'phone' });
 
       const matchedStore = allStores.find(s => s.id === updateObj.branch_id);
 
@@ -998,13 +1060,15 @@ export const HomeDelivery: React.FC = () => {
                   if (d.payment_status === 'Paid') payColor = 'text-emerald-500 font-bold';
                   if (d.payment_status === 'Pending') payColor = 'text-amber-500';
 
-                  const rawKm = getRawDistanceKm(d.latitude, d.longitude);
+                  const rawKm = getRawDistanceKm(d.latitude, d.longitude, d.branch_lat || 13.0827, d.branch_lon || 80.2707);
                   const distanceText = rawKm > 0 ? `${rawKm} km` : '—';
                   const driverPayoutAmount = rawKm * ratePerKm;
 
-                  const googleMapsUrl = (d.latitude && d.longitude)
-                    ? `https://www.google.com/maps/search/?api=1&query=${d.latitude},${d.longitude}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.customer_address)}`;
+                  const googleMapsUrl = (d.latitude && d.longitude && d.branch_lat && d.branch_lon)
+                    ? `https://www.google.com/maps/dir/?api=1&origin=${d.branch_lat},${d.branch_lon}&destination=${d.latitude},${d.longitude}`
+                    : (d.latitude && d.longitude)
+                      ? `https://www.google.com/maps/search/?api=1&query=${d.latitude},${d.longitude}`
+                      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.customer_address)}`;
 
                   return (
                     <tr key={d.id} className="hover:bg-dark-50/30 dark:hover:bg-dark-900/10 transition-colors">
@@ -1047,7 +1111,7 @@ export const HomeDelivery: React.FC = () => {
                             className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
                             title="Open in Google Maps"
                           >
-                            <MapPin className="h-3 w-3" /> GPS Maps <ExternalLink className="h-2.5 w-2.5" />
+                            <MapPin className="h-3 w-3" /> 🗺️ View Full Route on Google Maps <ExternalLink className="h-2.5 w-2.5" />
                           </a>
                         </div>
                       </td>
@@ -1308,6 +1372,7 @@ export const HomeDelivery: React.FC = () => {
             label="Customer Contact Phone *"
             value={formData.customer_phone}
             onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+            onBlur={handlePhoneBlur}
             placeholder="+91 9876543210"
             required
           />
@@ -1389,6 +1454,22 @@ export const HomeDelivery: React.FC = () => {
                   {geocodingLoading ? 'Searching...' : 'Search Location'}
                 </Button>
               </div>
+            </div>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-dark-200 dark:border-dark-700"></div>
+              <span className="flex-shrink-0 mx-4 text-dark-400 text-[10px] uppercase font-bold">OR Paste Link</span>
+              <div className="flex-grow border-t border-dark-200 dark:border-dark-700"></div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <input
+                type="text"
+                value={mapLink}
+                onChange={handleMapLinkChange}
+                placeholder="Paste full Google Maps URL (e.g. google.com/maps/@13.08,80.27...)"
+                className="w-full text-xs py-2 px-3 bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-750 rounded-lg text-dark-900 dark:text-white"
+              />
             </div>
 
             {/* Geocoded Results Selector Dropdown */}
@@ -1486,6 +1567,7 @@ export const HomeDelivery: React.FC = () => {
             label="Customer Contact Phone *"
             value={formData.customer_phone}
             onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+            onBlur={handlePhoneBlur}
             required
           />
 

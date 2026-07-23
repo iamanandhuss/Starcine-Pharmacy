@@ -10,6 +10,9 @@ import { supabase } from '../../services/supabase';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { RoleNameBadge } from '../../components/ui/RoleBadge';
+import { Modal } from '../../components/ui/Modal';
+import { Input } from '../../components/ui/Input';
+import { Toast } from '../../components/ui/Toast';
 
 interface StoreDetailInfo {
   id: string;
@@ -21,6 +24,8 @@ interface StoreDetailInfo {
   email: string | null;
   manager_name: string | null;
   is_active: boolean;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
 }
 
@@ -56,6 +61,23 @@ export const StoreDetail: React.FC = () => {
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [todaySales, setTodaySales] = useState<number>(0);
 
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [latInput, setLatInput] = useState('');
+  const [lonInput, setLonInput] = useState('');
+  
+  // Geocoding Search State
+  const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+  const [geocodingLoading, setGeocodingLoading] = useState(false);
+  const [geocodedPlaces, setGeocodedPlaces] = useState<any[]>([]);
+  const [selectedPlaceName, setSelectedPlaceName] = useState<string | null>(null);
+  const [mapLink, setMapLink] = useState('');
+  
+  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -76,6 +98,86 @@ export const StoreDetail: React.FC = () => {
 
   const handleTodayJump = () => {
     setSelectedDate(new Date());
+  };
+
+  const handleSearchPlaceLocation = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!placeSearchQuery.trim()) {
+      showToast('Please enter a landmark or place name to search.', 'error');
+      return;
+    }
+
+    setGeocodingLoading(true);
+    setGeocodedPlaces([]);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(placeSearchQuery.trim())}&limit=5`
+      );
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        setGeocodedPlaces(data);
+        const topPlace = data[0];
+        const lat = parseFloat(topPlace.lat).toFixed(6);
+        const lon = parseFloat(topPlace.lon).toFixed(6);
+
+        setLatInput(lat);
+        setLonInput(lon);
+        setSelectedPlaceName(topPlace.display_name);
+        showToast(`Detected location: ${lat}, ${lon}`);
+      } else {
+        showToast('No matching places found. Try a broader search phrase.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Place search service unavailable.', 'error');
+    } finally {
+      setGeocodingLoading(false);
+    }
+  };
+
+  const handleSelectGeocodedPlace = (place: any) => {
+    const lat = parseFloat(place.lat).toFixed(6);
+    const lon = parseFloat(place.lon).toFixed(6);
+    setLatInput(lat);
+    setLonInput(lon);
+    setSelectedPlaceName(place.display_name);
+    setGeocodedPlaces([]);
+    showToast(`Selected location: ${lat}, ${lon}`);
+  };
+
+  const handleMapLinkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMapLink(val);
+    
+    const match = val.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (match) {
+      setLatInput(parseFloat(match[1]).toFixed(6));
+      setLonInput(parseFloat(match[2]).toFixed(6));
+      setSelectedPlaceName("Parsed from Google Maps link");
+      showToast(`Detected location: ${match[1]}, ${match[2]}`);
+    } else if (val.includes('goo.gl') || val.includes('maps.app.goo.gl')) {
+      showToast('Short links cannot be parsed automatically. Please open it in a browser and paste the full URL.', 'error');
+    }
+  };
+
+  const handleSaveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    const lat = parseFloat(latInput);
+    const lon = parseFloat(lonInput);
+    if (isNaN(lat) || isNaN(lon)) {
+      showToast('Invalid coordinates', 'error');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('branches').update({ latitude: lat, longitude: lon }).eq('id', id);
+      if (error) throw error;
+      showToast('Store location updated successfully');
+      setIsLocationModalOpen(false);
+      fetchStoreData();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
   };
 
   const fetchStoreData = async () => {
@@ -418,8 +520,17 @@ export const StoreDetail: React.FC = () => {
               <div className="flex items-center gap-3 p-3 bg-dark-50 dark:bg-dark-950 border border-dark-100 dark:border-dark-850 rounded-lg">
                 <MapPin className="h-4 w-4 text-brand-500 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[9px] uppercase font-bold text-dark-400 leading-tight">Address</p>
+                  <p className="text-[9px] uppercase font-bold text-dark-400 leading-tight">Address & GPS Location</p>
                   <p className="font-semibold text-dark-800 dark:text-dark-200 truncate">{store.address}</p>
+                  {store.latitude && store.longitude ? (
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${store.latitude},${store.longitude}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-brand-500 hover:underline mt-1 block">
+                      📍 {store.latitude}, {store.longitude}
+                    </a>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => setIsLocationModalOpen(true)} className="mt-2 text-[10px] py-1 h-auto">
+                      Add Permanent GPS Location
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -490,6 +601,89 @@ export const StoreDetail: React.FC = () => {
             </table>
           </Card.Content>
         </Card>
+      </div>
+
+      {/* Location Modal */}
+      <Modal isOpen={isLocationModalOpen} onClose={() => setIsLocationModalOpen(false)} title="Add Permanent Store Location">
+        <form onSubmit={handleSaveLocation} className="space-y-4">
+          <p className="text-xs text-dark-500 mb-2">Set the exact GPS coordinates for this store. You can search for a landmark or enter coordinates manually.</p>
+          
+          <div className="p-3 bg-dark-50 dark:bg-dark-900 rounded-xl border border-dark-200 dark:border-dark-800 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-dark-800 dark:text-dark-200 flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 text-brand-500" /> Landmark & Place Search
+              </span>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={placeSearchQuery}
+                onChange={(e) => setPlaceSearchQuery(e.target.value)}
+                placeholder="e.g. City Name, Street, or Landmark"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchPlaceLocation(); } }}
+                className="flex-1 text-xs py-2 px-3 bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-750 rounded-lg text-dark-900 dark:text-white"
+              />
+              <Button type="button" variant="primary" size="sm" onClick={handleSearchPlaceLocation} disabled={geocodingLoading}>
+                {geocodingLoading ? 'Searching...' : 'Search'}
+              </Button>
+            </div>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-dark-200 dark:border-dark-700"></div>
+              <span className="flex-shrink-0 mx-4 text-dark-400 text-[10px] uppercase font-bold">OR Paste Link</span>
+              <div className="flex-grow border-t border-dark-200 dark:border-dark-700"></div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <input
+                type="text"
+                value={mapLink}
+                onChange={handleMapLinkChange}
+                placeholder="Paste full Google Maps URL (e.g. google.com/maps/@13.08,80.27...)"
+                className="w-full text-xs py-2 px-3 bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-750 rounded-lg text-dark-900 dark:text-white"
+              />
+            </div>
+
+            {geocodedPlaces.length > 0 && (
+              <div className="bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg p-2 space-y-1 max-h-36 overflow-y-auto text-xs">
+                <p className="text-[10px] font-bold text-dark-400 uppercase">Select exact result:</p>
+                {geocodedPlaces.map(place => (
+                  <div
+                    key={place.place_id}
+                    onClick={() => handleSelectGeocodedPlace(place)}
+                    className="p-1.5 rounded hover:bg-brand-500/10 hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer flex items-center justify-between text-dark-800 dark:text-dark-200"
+                  >
+                    <span className="truncate pr-2">{place.display_name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedPlaceName && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg text-[10px] text-emerald-600 flex items-center gap-1.5 font-semibold">
+                <span className="truncate">Detected: {selectedPlaceName}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 pt-1 border-t border-dark-200/60 dark:border-dark-800">
+              <Input label="Latitude" placeholder="e.g. 13.0827" value={latInput} onChange={e => setLatInput(e.target.value)} required />
+              <Input label="Longitude" placeholder="e.g. 80.2707" value={lonInput} onChange={e => setLonInput(e.target.value)} required />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-dark-100 dark:border-dark-800">
+            <Button variant="ghost" type="button" onClick={() => setIsLocationModalOpen(false)}>Cancel</Button>
+            <Button type="submit">Save GPS Coordinates</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Toasts */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map(t => (
+          <Toast key={t.id} message={t.message} type={t.type} onClose={() => setToasts(prev => prev.filter(x => x.id !== t.id))} />
+        ))}
       </div>
     </div>
   );
