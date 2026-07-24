@@ -101,9 +101,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } else if (isStoreAdmin || isEmployee) {
         // Store Admin / Employee: automatically bound to their branch
-        if (profile?.store_id) {
-          setSelectedStoreIdState(profile.store_id);
+        if (profile?.store_id || profile?.branch_id) {
+          const storeId = profile.store_id || profile.branch_id;
+          setSelectedStoreIdState(storeId);
           setSelectedStoreName(profile.store_name);
+          
+          // Fetch their specific store so latitude/longitude are available
+          const { data } = await supabase
+            .from('branches')
+            .select('id, name, store_code, code, address, phone, email, manager_name, is_active, latitude, longitude')
+            .eq('id', storeId)
+            .maybeSingle();
+            
+          if (data) {
+            setAllStores([data]);
+          }
         }
         setStoresLoading(false);
       } else {

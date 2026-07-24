@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { useStore } from '../../context/StoreContext';
 import { Toast } from '../../components/ui/Toast';
 import { supabase } from '../../services/supabase';
+import { DeliveryRouteMap } from '../../components/maps/DeliveryRouteMap';
 
 interface DeliveryOrder {
   id: string;
@@ -57,17 +58,18 @@ const getRawDistanceKm = (lat1: number | null, lon1: number | null, lat2 = 13.08
 
 
 export const StoreDeliveries: React.FC = () => {
-  const { selectedStoreId } = useStore();
+  const { selectedStoreId, allStores } = useStore();
+  const activeStore = allStores.find(s => s.id === selectedStoreId);
 
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
   const [couriers, setCouriers] = useState<DeliveryStaff[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'cancelled' | 'couriers' | 'payouts'>('pending');
 
-  // Fixed Delivery Rate per KM (default ₹20 / km)
+  // Fixed Delivery Rate per KM (default ₹4 / km)
   const [ratePerKm, setRatePerKm] = useState<number>(() => {
     const saved = localStorage.getItem('starcine_delivery_rate_per_km');
-    return saved ? parseFloat(saved) : 20;
+    return saved ? parseFloat(saved) : 4;
   });
 
   const handleUpdateRatePerKm = (newRate: number) => {
@@ -81,8 +83,10 @@ export const StoreDeliveries: React.FC = () => {
   // Modals
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+  const [isMapRouteOpen, setIsMapRouteOpen] = useState(false);
   
   const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
+  const [selectedMapRouteDelivery, setSelectedMapRouteDelivery] = useState<DeliveryOrder | null>(null);
   const [assignedCourierId, setAssignedCourierId] = useState('');
 
   // New Order inputs
@@ -507,7 +511,7 @@ export const StoreDeliveries: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-dark-100 dark:divide-dark-800 text-xs font-medium">
                   {filteredOrders.map(order => {
-                    const rawKm = getRawDistanceKm(order.latitude, order.longitude);
+                    const rawKm = getRawDistanceKm(order.latitude, order.longitude, activeStore?.latitude || 13.0827, activeStore?.longitude || 80.2707);
                     const distanceStr = rawKm > 0 ? `${rawKm} km` : '—';
                     const driverPayout = rawKm * ratePerKm;
 
@@ -529,14 +533,26 @@ export const StoreDeliveries: React.FC = () => {
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-brand-500/10 text-brand-600 border border-brand-500/20">
                               <Compass className="h-3 w-3" /> {distanceStr}
                             </span>
-                            <a
-                              href={googleMapsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline"
-                            >
-                              <MapPin className="h-3 w-3" /> GPS Map <ExternalLink className="h-2.5 w-2.5" />
-                            </a>
+                            {(order.latitude && order.longitude && activeStore?.latitude && activeStore?.longitude) ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedMapRouteDelivery(order);
+                                  setIsMapRouteOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline"
+                              >
+                                <MapPin className="h-3 w-3" /> 🗺️ View Live Map Route
+                              </button>
+                            ) : (
+                              <a
+                                href={googleMapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline"
+                              >
+                                <MapPin className="h-3 w-3" /> GPS Map <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            )}
                           </div>
                         </td>
 
@@ -739,6 +755,39 @@ export const StoreDeliveries: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* LIVE MAP ROUTE MODAL */}
+      <Modal
+        isOpen={isMapRouteOpen}
+        onClose={() => {
+          setIsMapRouteOpen(false);
+          setSelectedMapRouteDelivery(null);
+        }}
+        title="Delivery Navigation & Route Plan"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-dark-500">
+            Optimal driving route from <strong>{activeStore?.name || 'Store'}</strong> to <strong>{selectedMapRouteDelivery?.customer_name}</strong>.
+          </p>
+          {selectedMapRouteDelivery && activeStore?.latitude && activeStore?.longitude && selectedMapRouteDelivery.latitude && selectedMapRouteDelivery.longitude ? (
+            <DeliveryRouteMap
+              storeLat={activeStore.latitude}
+              storeLon={activeStore.longitude}
+              deliveryLat={selectedMapRouteDelivery.latitude}
+              deliveryLon={selectedMapRouteDelivery.longitude}
+            />
+          ) : (
+            <div className="p-4 bg-amber-50 text-amber-700 rounded-lg text-sm font-bold text-center border border-amber-200">
+              Cannot generate route: Missing precise GPS coordinates for store or customer.
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => setIsMapRouteOpen(false)}>Close Map</Button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 };

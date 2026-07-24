@@ -6,6 +6,9 @@ import {
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Toast } from '../../components/ui/Toast';
+import { useStore } from '../../context/StoreContext';
+import { DeliveryRouteMap } from '../../components/maps/DeliveryRouteMap';
+import { Modal } from '../../components/ui/Modal';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 
@@ -47,6 +50,10 @@ export const EmployeeDeliveries: React.FC = () => {
   const [completing, setCompleting] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'available' | 'mine' | 'done'>('available');
 
+  const { allStores } = useStore();
+  const activeStore = allStores.find(s => s.id === profile?.branch_id || s.id === profile?.store_id);
+  const [isMapRouteOpen, setIsMapRouteOpen] = useState(false);
+  const [selectedMapRouteDelivery, setSelectedMapRouteDelivery] = useState<Delivery | null>(null);
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now();
@@ -257,7 +264,7 @@ export const EmployeeDeliveries: React.FC = () => {
             </div>
           ) : (
             unassigned.map(delivery => {
-              const km = getRawKm(delivery.latitude, delivery.longitude);
+              const km = getRawKm(delivery.latitude, delivery.longitude, activeStore?.latitude || 13.0827, activeStore?.longitude || 80.2707);
               const earning = parseFloat((km * ratePerKm).toFixed(2));
               const mapsUrl = delivery.latitude && delivery.longitude
                 ? `https://www.google.com/maps/search/?api=1&query=${delivery.latitude},${delivery.longitude}`
@@ -298,15 +305,29 @@ export const EmployeeDeliveries: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <a
-                            href={mapsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800 transition-colors"
-                            title="Open in Google Maps"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
+                          
+                          {(delivery.latitude && delivery.longitude && activeStore?.latitude && activeStore?.longitude) ? (
+                            <button
+                              onClick={() => {
+                                setSelectedMapRouteDelivery(delivery);
+                                setIsMapRouteOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800 transition-colors"
+                              title="View Live Map Route"
+                            >
+                              <Navigation className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <a
+                              href={mapsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800 transition-colors"
+                              title="Open in Google Maps"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          )}
                           <Button
                             size="sm"
                             className="bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs px-4"
@@ -333,7 +354,7 @@ export const EmployeeDeliveries: React.FC = () => {
             </div>
           ) : (
             myDeliveries.map(delivery => {
-              const km = getRawKm(delivery.latitude, delivery.longitude);
+              const km = getRawKm(delivery.latitude, delivery.longitude, activeStore?.latitude || 13.0827, activeStore?.longitude || 80.2707);
               const earning = parseFloat((km * ratePerKm).toFixed(2));
               const mapsUrl = delivery.latitude && delivery.longitude
                 ? `https://www.google.com/maps/search/?api=1&query=${delivery.latitude},${delivery.longitude}`
@@ -413,7 +434,7 @@ export const EmployeeDeliveries: React.FC = () => {
             </div>
           ) : (
             completedToday.map(delivery => {
-              const km = getRawKm(delivery.latitude, delivery.longitude);
+              const km = getRawKm(delivery.latitude, delivery.longitude, activeStore?.latitude || 13.0827, activeStore?.longitude || 80.2707);
               const earning = parseFloat((km * ratePerKm).toFixed(2));
 
               return (
@@ -442,8 +463,41 @@ export const EmployeeDeliveries: React.FC = () => {
           )
         )}
       </div>
+    
+      {/* LIVE MAP ROUTE MODAL */}
+      <Modal
+        isOpen={isMapRouteOpen}
+        onClose={() => {
+          setIsMapRouteOpen(false);
+          setSelectedMapRouteDelivery(null);
+        }}
+        title="Delivery Navigation & Route Plan"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-dark-500">
+            Optimal driving route from <strong>{activeStore?.name || 'Store'}</strong> to <strong>{selectedMapRouteDelivery?.customer_name}</strong>.
+          </p>
+          {selectedMapRouteDelivery && activeStore?.latitude && activeStore?.longitude && selectedMapRouteDelivery.latitude && selectedMapRouteDelivery.longitude ? (
+            <DeliveryRouteMap
+              storeLat={activeStore.latitude}
+              storeLon={activeStore.longitude}
+              deliveryLat={selectedMapRouteDelivery.latitude}
+              deliveryLon={selectedMapRouteDelivery.longitude}
+            />
+          ) : (
+            <div className="p-4 bg-amber-50 text-amber-700 rounded-lg text-sm font-bold text-center border border-amber-200">
+              Cannot generate route: Missing precise GPS coordinates for store or customer.
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => setIsMapRouteOpen(false)}>Close Map</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
+
 
 export default EmployeeDeliveries;

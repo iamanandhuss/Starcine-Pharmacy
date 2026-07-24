@@ -14,6 +14,7 @@ import { Input } from '../../components/ui/Input';
 import { useStore } from '../../context/StoreContext';
 import { useAuth } from '../../context/AuthContext';
 import { Toast } from '../../components/ui/Toast';
+import { DeliveryRouteMap } from '../../components/maps/DeliveryRouteMap';
 
 interface UserProfile {
   id: string;
@@ -111,7 +112,9 @@ export const HomeDelivery: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDriverOpen, setIsDriverOpen] = useState(false);
+  const [isMapRouteOpen, setIsMapRouteOpen] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
+  const [selectedMapRouteDelivery, setSelectedMapRouteDelivery] = useState<Delivery | null>(null);
 
   // Geocoding Place Search State
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
@@ -1104,15 +1107,28 @@ export const HomeDelivery: React.FC = () => {
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
                             <Compass className="h-3 w-3" /> {distanceText}
                           </span>
-                          <a
-                            href={googleMapsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
-                            title="Open in Google Maps"
-                          >
-                            <MapPin className="h-3 w-3" /> 🗺️ View Full Route on Google Maps <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
+                          
+                          {(d.latitude && d.longitude && d.branch_lat && d.branch_lon) ? (
+                            <button
+                              onClick={() => {
+                                setSelectedMapRouteDelivery(d);
+                                setIsMapRouteOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              <MapPin className="h-3 w-3" /> 🗺️ View Live Map Route
+                            </button>
+                          ) : (
+                            <a
+                              href={googleMapsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                              title="Open in Google Maps"
+                            >
+                              <MapPin className="h-3 w-3" /> 🗺️ View Full Route on Google Maps <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
                         </div>
                       </td>
 
@@ -1327,6 +1343,70 @@ export const HomeDelivery: React.FC = () => {
           </div>
         )}
       </Card>
+
+      {/* ASSIGN DRIVER MODAL */}
+      <Modal
+        isOpen={isDriverOpen && !isSuperAdmin}
+        onClose={() => setIsDriverOpen(false)}
+        title="Dispatch Delivery"
+        footer={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setIsDriverOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleAssignDriver}>Confirm Dispatch</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-dark-500">Assign a driver to deliver the order to <strong>{selectedDelivery?.customer_name}</strong> at <strong>{selectedDelivery?.customer_address}</strong>.</p>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-dark-700 dark:text-dark-300">Select Available Driver</label>
+            <select
+              value={selectedDriverId}
+              onChange={(e) => setSelectedDriverId(e.target.value)}
+              className="w-full text-sm p-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-800 rounded-lg text-dark-900 dark:text-white font-semibold"
+            >
+              <option value="">-- Unassigned --</option>
+              {drivers.map(driver => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.full_name} ({driver.phone})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Modal>
+
+      {/* LIVE MAP ROUTE MODAL */}
+      <Modal
+        isOpen={isMapRouteOpen}
+        onClose={() => {
+          setIsMapRouteOpen(false);
+          setSelectedMapRouteDelivery(null);
+        }}
+        title="Delivery Navigation & Route Plan"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-dark-500">
+            Optimal driving route from <strong>{selectedMapRouteDelivery?.branch_name || 'Store'}</strong> to <strong>{selectedMapRouteDelivery?.customer_name}</strong>.
+          </p>
+          {selectedMapRouteDelivery && selectedMapRouteDelivery.branch_lat && selectedMapRouteDelivery.branch_lon && selectedMapRouteDelivery.latitude && selectedMapRouteDelivery.longitude ? (
+            <DeliveryRouteMap
+              storeLat={selectedMapRouteDelivery.branch_lat}
+              storeLon={selectedMapRouteDelivery.branch_lon}
+              deliveryLat={selectedMapRouteDelivery.latitude}
+              deliveryLon={selectedMapRouteDelivery.longitude}
+            />
+          ) : (
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-lg text-sm font-bold text-center border border-amber-200 dark:border-amber-900/50">
+              Cannot generate route: Missing precise GPS coordinates for store or customer.
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => setIsMapRouteOpen(false)}>Close Map</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* CREATE ORDER MODAL */}
       <Modal
