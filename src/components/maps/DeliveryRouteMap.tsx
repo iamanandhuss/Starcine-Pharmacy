@@ -37,8 +37,8 @@ const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, del
       routeWhileDragging: false,
       showAlternatives: false,
       fitSelectedRoutes: true,
-      show: true,
-      collapsible: true, // Enables a toggle button to collapse/close the navigation dialogue
+      show: false,
+      addWaypoints: false,
       // Create custom markers to differentiate Start vs End
       createMarker: (i: number, waypoint: any) => {
         const marker = L.marker(waypoint.latLng, {
