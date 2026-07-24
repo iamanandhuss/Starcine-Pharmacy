@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, useMap, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-routing-machine';
-
+import { supabase } from '../../services/supabase';
 // Fix missing Leaflet marker icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -65,9 +65,34 @@ interface DeliveryRouteMapProps {
   storeLon: number;
   deliveryLat: number;
   deliveryLon: number;
+  driverId?: string;
 }
 
-export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, storeLon, deliveryLat, deliveryLon }) => {
+const TruckIcon = L.divIcon({
+  html: '<div style="font-size: 24px; text-align: center; transform: translateY(-50%); line-height: 1;">🚚</div>',
+  className: 'custom-truck-icon',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15]
+});
+
+export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, storeLon, deliveryLat, deliveryLon, driverId }) => {
+  const [driverPos, setDriverPos] = useState<[number, number] | null>(null);
+
+  useEffect(() => {
+    if (!driverId) return;
+
+    const channel = supabase.channel('driver_tracking_channel')
+      .on('broadcast', { event: 'location_update' }, (payload) => {
+        if (payload.payload?.driverId === driverId) {
+          setDriverPos([payload.payload.latitude, payload.payload.longitude]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [driverId]);
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700 relative z-0">
       <style>{`
@@ -107,6 +132,9 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
           deliveryLat={deliveryLat}
           deliveryLon={deliveryLon}
         />
+        {driverPos && (
+          <Marker position={driverPos} icon={TruckIcon} zIndexOffset={1000} />
+        )}
       </MapContainer>
     </div>
   );
