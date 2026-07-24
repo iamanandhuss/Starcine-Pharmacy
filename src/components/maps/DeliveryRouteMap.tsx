@@ -98,23 +98,7 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
     <div className="w-full h-[500px] rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700 relative z-0">
       <style>{`
         .leaflet-routing-container {
-          background-color: white !important;
-          padding: 10px !important;
-          border-radius: 8px !important;
-          max-height: 400px;
-          overflow-y: auto;
-          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
-        }
-        .dark .leaflet-routing-container {
-          background-color: #1a1a1a !important;
-          color: white !important;
-        }
-        .dark .leaflet-routing-alt, .dark .leaflet-routing-alt table {
-          color: white !important;
-        }
-        .leaflet-routing-alt h2 {
-          font-size: 14px;
-          margin-bottom: 8px;
+          display: none !important;
         }
       `}</style>
       <MapContainer
