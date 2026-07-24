@@ -29,7 +29,7 @@ const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, del
   useEffect(() => {
     if (!map) return;
 
-    const routingControl = L.Routing.control({
+    const routingControl = (L.Routing as any).control({
       waypoints: [
         L.latLng(storeLat, storeLon),
         L.latLng(deliveryLat, deliveryLon)
@@ -39,7 +39,7 @@ const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, del
       fitSelectedRoutes: true,
       show: true,
       // Create custom markers to differentiate Start vs End
-      createMarker: (i: number, waypoint: any, n: number) => {
+      createMarker: (i: number, waypoint: any) => {
         const marker = L.marker(waypoint.latLng, {
           draggable: false,
         });

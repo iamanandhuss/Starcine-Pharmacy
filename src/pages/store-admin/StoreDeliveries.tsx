@@ -78,7 +78,7 @@ export const StoreDeliveries: React.FC = () => {
   };
 
   const [settledDrivers, setSettledDrivers] = useState<Record<string, boolean>>({});
-  const [serverPayoutsSummary, setServerPayoutsSummary] = useState<any[]>([]);
+
 
   // Modals
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);

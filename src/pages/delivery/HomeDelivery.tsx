@@ -127,7 +127,7 @@ export const HomeDelivery: React.FC = () => {
     const phone = formData.customer_phone.trim();
     if (phone.length < 5) return;
     try {
-      const { data, error } = await supabase.from('customer_address_book').select('*').eq('phone', phone).maybeSingle();
+      const { data } = await supabase.from('customer_address_book').select('*').eq('phone', phone).maybeSingle();
       if (data) {
         setFormData(prev => ({
           ...prev,
