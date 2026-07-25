@@ -76,7 +76,7 @@ interface DeliveryRouteMapProps {
   storeLon: number;
   deliveryLat: number;
   deliveryLon: number;
-  driverId?: string;
+  driverId?: string | null;
 }
 
 const TruckIcon = L.divIcon({
