@@ -84,11 +84,15 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
 
     const channel = supabase.channel('driver_tracking_channel')
       .on('broadcast', { event: 'location_update' }, (payload) => {
+        console.log(`📡 Received GPS Update from driver: ${payload.payload?.driverId}`, payload.payload);
         if (payload.payload?.driverId === driverId) {
+          console.log(`✅ ID Matched! Moving truck marker for driver ${driverId} to ${payload.payload.latitude}, ${payload.payload.longitude}`);
           setDriverPos([payload.payload.latitude, payload.payload.longitude]);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`🔌 Realtime Map Subscription Status: ${status} (Listening for driver: ${driverId})`);
+      });
 
     return () => {
       supabase.removeChannel(channel);
