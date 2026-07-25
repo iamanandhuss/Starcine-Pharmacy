@@ -79,9 +79,9 @@ interface DeliveryRouteMapProps {
   driverId?: string | null;
 }
 
-const TruckIcon = L.divIcon({
-  html: '<div style="font-size: 24px; text-align: center; transform: translateY(-50%); line-height: 1;">🚚</div>',
-  className: 'custom-truck-icon smooth-truck-marker',
+const BikeIcon = L.divIcon({
+  html: '<div style="font-size: 26px; text-align: center; transform: translateY(-50%); line-height: 1;">🛵</div>',
+  className: 'custom-bike-icon smooth-marker',
   iconSize: [30, 30],
   iconAnchor: [15, 15]
 });
@@ -157,7 +157,7 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
             const rawLat = newRow.latitude;
             const rawLng = newRow.longitude;
             const snapped = snapToRoute(rawLat, rawLng, routePointsRef.current);
-            console.log(`✅ Moving truck marker: Raw [${rawLat}, ${rawLng}] -> Snapped [${snapped[0]}, ${snapped[1]}]`);
+            console.log(`✅ Moving bike marker: Raw [${rawLat}, ${rawLng}] -> Snapped [${snapped[0]}, ${snapped[1]}]`);
             setDriverPos(snapped);
           }
         }
@@ -177,7 +177,7 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
         .leaflet-routing-container {
           display: none !important;
         }
-        .smooth-truck-marker {
+        .smooth-marker {
           transition: transform 1.2s linear !important;
         }
       `}</style>
@@ -199,7 +199,7 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
           onRouteFound={handleRouteFound}
         />
         {driverPos && (
-          <Marker position={driverPos} icon={TruckIcon} zIndexOffset={1000} />
+          <Marker position={driverPos} icon={BikeIcon} zIndexOffset={1000} />
         )}
       </MapContainer>
     </div>
