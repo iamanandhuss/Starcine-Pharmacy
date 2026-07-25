@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-routing-machine';
 import { supabase } from '../../services/supabase';
+
 // Fix missing Leaflet marker icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -21,9 +22,10 @@ interface RoutingMachineProps {
   storeLon: number;
   deliveryLat: number;
   deliveryLon: number;
+  onRouteFound?: (points: Array<{ lat: number; lng: number }>) => void;
 }
 
-const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, deliveryLat, deliveryLon }) => {
+const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, deliveryLat, deliveryLon, onRouteFound }) => {
   const map = useMap();
 
   useEffect(() => {
@@ -49,6 +51,14 @@ const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, del
       }
     }).addTo(map);
 
+    routingControl.on('routesfound', (e: any) => {
+      const routes = e.routes;
+      if (routes && routes[0] && routes[0].coordinates && onRouteFound) {
+        console.log(`🗺️ Route found with ${routes[0].coordinates.length} geometry points for snapping.`);
+        onRouteFound(routes[0].coordinates);
+      }
+    });
+
     return () => {
       try {
         map.removeControl(routingControl);
@@ -56,7 +66,7 @@ const RoutingMachine: React.FC<RoutingMachineProps> = ({ storeLat, storeLon, del
         console.error(e);
       }
     };
-  }, [map, storeLat, storeLon, deliveryLat, deliveryLon]);
+  }, [map, storeLat, storeLon, deliveryLat, deliveryLon, onRouteFound]);
 
   return null;
 };
@@ -71,13 +81,46 @@ interface DeliveryRouteMapProps {
 
 const TruckIcon = L.divIcon({
   html: '<div style="font-size: 24px; text-align: center; transform: translateY(-50%); line-height: 1;">🚚</div>',
-  className: 'custom-truck-icon',
+  className: 'custom-truck-icon smooth-truck-marker',
   iconSize: [30, 30],
   iconAnchor: [15, 15]
 });
 
+// Helper function to calculate distance squared between two lat/lng points
+function getDistanceSq(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const dLat = lat1 - lat2;
+  const dLng = lng1 - lng2;
+  return dLat * dLat + dLng * dLng;
+}
+
+// Snap raw GPS coordinates to nearest point on the road geometry
+function snapToRoute(rawLat: number, rawLng: number, routePoints: Array<{ lat: number; lng: number }>): [number, number] {
+  if (!routePoints || routePoints.length === 0) {
+    return [rawLat, rawLng];
+  }
+
+  let minDistanceSq = Infinity;
+  let closestPoint = { lat: rawLat, lng: rawLng };
+
+  for (let i = 0; i < routePoints.length; i++) {
+    const p = routePoints[i];
+    const distSq = getDistanceSq(rawLat, rawLng, p.lat, p.lng);
+    if (distSq < minDistanceSq) {
+      minDistanceSq = distSq;
+      closestPoint = p;
+    }
+  }
+
+  return [closestPoint.lat, closestPoint.lng];
+}
+
 export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, storeLon, deliveryLat, deliveryLon, driverId }) => {
   const [driverPos, setDriverPos] = useState<[number, number] | null>(null);
+  const routePointsRef = useRef<Array<{ lat: number; lng: number }>>([]);
+
+  const handleRouteFound = useCallback((points: Array<{ lat: number; lng: number }>) => {
+    routePointsRef.current = points;
+  }, []);
 
   useEffect(() => {
     if (!driverId) return;
@@ -86,8 +129,11 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
       .on('broadcast', { event: 'location_update' }, (payload) => {
         console.log(`📡 Received GPS Update from driver: ${payload.payload?.driverId}`, payload.payload);
         if (payload.payload?.driverId === driverId) {
-          console.log(`✅ ID Matched! Moving truck marker for driver ${driverId} to ${payload.payload.latitude}, ${payload.payload.longitude}`);
-          setDriverPos([payload.payload.latitude, payload.payload.longitude]);
+          const rawLat = payload.payload.latitude;
+          const rawLng = payload.payload.longitude;
+          const snapped = snapToRoute(rawLat, rawLng, routePointsRef.current);
+          console.log(`✅ ID Matched! Raw: [${rawLat}, ${rawLng}] -> Snapped to road: [${snapped[0]}, ${snapped[1]}]`);
+          setDriverPos(snapped);
         }
       })
       .subscribe((status) => {
@@ -98,11 +144,15 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
       supabase.removeChannel(channel);
     };
   }, [driverId]);
+
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700 relative z-0">
       <style>{`
         .leaflet-routing-container {
           display: none !important;
+        }
+        .smooth-truck-marker {
+          transition: transform 1.2s linear !important;
         }
       `}</style>
       <MapContainer
@@ -120,6 +170,7 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
           storeLon={storeLon}
           deliveryLat={deliveryLat}
           deliveryLon={deliveryLon}
+          onRouteFound={handleRouteFound}
         />
         {driverPos && (
           <Marker position={driverPos} icon={TruckIcon} zIndexOffset={1000} />
