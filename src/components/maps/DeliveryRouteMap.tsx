@@ -125,19 +125,45 @@ export const DeliveryRouteMap: React.FC<DeliveryRouteMapProps> = ({ storeLat, st
   useEffect(() => {
     if (!driverId) return;
 
-    const channel = supabase.channel('driver_tracking_channel')
-      .on('broadcast', { event: 'location_update' }, (payload) => {
-        console.log(`📡 Received GPS Update from driver: ${payload.payload?.driverId}`, payload.payload);
-        if (payload.payload?.driverId === driverId) {
-          const rawLat = payload.payload.latitude;
-          const rawLng = payload.payload.longitude;
-          const snapped = snapToRoute(rawLat, rawLng, routePointsRef.current);
-          console.log(`✅ ID Matched! Raw: [${rawLat}, ${rawLng}] -> Snapped to road: [${snapped[0]}, ${snapped[1]}]`);
-          setDriverPos(snapped);
+    // 1. Fetch initial location from the database
+    const fetchInitialLocation = async () => {
+      const { data, error } = await supabase
+        .from('driver_tracking')
+        .select('latitude, longitude')
+        .eq('driver_id', driverId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ Failed to fetch initial driver location:', error);
+      } else if (data) {
+        console.log(`✅ Found initial database location for driver ${driverId}: [${data.latitude}, ${data.longitude}]`);
+        const snapped = snapToRoute(data.latitude, data.longitude, routePointsRef.current);
+        setDriverPos(snapped);
+      } else {
+        console.log(`⚠️ No existing location found in database for driver ${driverId}. Waiting for driver to connect...`);
+      }
+    };
+    fetchInitialLocation();
+
+    // 2. Subscribe to Postgres changes on the driver_tracking table
+    const channel = supabase.channel(`tracking_${driverId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'driver_tracking', filter: `driver_id=eq.${driverId}` },
+        (payload) => {
+          console.log(`📡 Received Database GPS Update for driver ${driverId}:`, payload.new);
+          const newRow = payload.new as any;
+          if (newRow && newRow.latitude && newRow.longitude) {
+            const rawLat = newRow.latitude;
+            const rawLng = newRow.longitude;
+            const snapped = snapToRoute(rawLat, rawLng, routePointsRef.current);
+            console.log(`✅ Moving truck marker: Raw [${rawLat}, ${rawLng}] -> Snapped [${snapped[0]}, ${snapped[1]}]`);
+            setDriverPos(snapped);
+          }
         }
-      })
+      )
       .subscribe((status) => {
-        console.log(`🔌 Realtime Map Subscription Status: ${status} (Listening for driver: ${driverId})`);
+        console.log(`🔌 Database Realtime Subscription Status: ${status} (Listening for driver: ${driverId})`);
       });
 
     return () => {
