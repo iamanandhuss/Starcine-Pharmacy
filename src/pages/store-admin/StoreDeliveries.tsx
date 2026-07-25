@@ -776,6 +776,7 @@ export const StoreDeliveries: React.FC = () => {
               storeLon={activeStore.longitude}
               deliveryLat={selectedMapRouteDelivery.latitude}
               deliveryLon={selectedMapRouteDelivery.longitude}
+              driverId={selectedMapRouteDelivery.assigned_to}
             />
           ) : (
             <div className="p-4 bg-amber-50 text-amber-700 rounded-lg text-sm font-bold text-center border border-amber-200">
